@@ -5,13 +5,11 @@ import {
   getDatasource,
   deleteDatasource,
   getDraftExtraction,
-  getEphemeralCredential,
   listConnections,
   listDatasources,
   setDraftExtraction,
   clearDraftExtraction,
   saveCredential,
-  saveEphemeralCredential,
   touchUpdatedAt,
   upsertConnection,
   upsertDatasource,
@@ -166,9 +164,8 @@ export function api_updateConnection(input: {
 export function api_setCredential(input: {
   connectionId: string;
   odooUsername: string;
-  odooPassword: string;
-  remember: boolean;
-}): { ok: true; uid: number; canUseAdvanced: boolean } {
+  odooPassword: string; // password OR API key
+}): { ok: true; uid: number; canUseAdvanced: boolean; companies: Array<{ id: number; name: string }>; companyId?: number } {
   const conn = getConnection(input.connectionId);
   if (!conn) throw new Error("Connection not found.");
   const session = authenticate({
@@ -179,26 +176,28 @@ export function api_setCredential(input: {
   });
 
   const scope: Credential["scope"] = conn.shareCredentials ? "DOCUMENT" : "USER";
-  if (input.remember) {
-    const cred: Credential = {
-      connectionId: conn.id,
-      scope,
-      odooUsername: input.odooUsername,
-      // Placeholder: store plain password. Replace with encryption as per SECURITY.md.
-      secret: input.odooPassword,
-      updatedAt: nowIso(),
-    };
-    saveCredential(cred);
-  } else {
-    // Keep it usable for manual actions during this session without persisting to PropertiesService.
-    saveEphemeralCredential({
-      connectionId: conn.id,
-      odooUsername: input.odooUsername,
-      secret: input.odooPassword,
-    });
+  const cred: Credential = {
+    connectionId: conn.id,
+    scope,
+    odooUsername: input.odooUsername,
+    // Placeholder: store plain password/API key. Replace with encryption as per SECURITY.md.
+    secret: input.odooPassword,
+    updatedAt: nowIso(),
+  };
+  saveCredential(cred);
+
+  const companies = getCompaniesForSession(session);
+  // Pick a default company: keep pinned if valid, else use first from list.
+  let companyId: number | undefined = conn.companyId;
+  if (companyId && !companies.some((c) => c.id === companyId)) companyId = undefined;
+  if (!companyId && companies.length) companyId = companies[0].id;
+  if (companyId && conn.companyId !== companyId) {
+    conn.companyId = companyId;
+    touchUpdatedAt(conn);
+    upsertConnection(conn);
   }
 
-  return { ok: true, uid: session.uid, canUseAdvanced: canUseAdvanced(session) };
+  return { ok: true, uid: session.uid, canUseAdvanced: canUseAdvanced(session), companies, companyId };
 }
 
 function getSessionForConnection(connectionId: string): OdooSession {
@@ -207,15 +206,80 @@ function getSessionForConnection(connectionId: string): OdooSession {
 
   const scope = conn.shareCredentials ? "DOCUMENT" : "USER";
   const cred = getCredential(connectionId, scope);
-  const tmp = cred ? undefined : getEphemeralCredential(connectionId);
-  if (!cred && !tmp) throw new Error("Missing credentials. Please login (and optionally remember credentials).");
+  if (!cred) throw new Error("Missing credentials. Please login.");
 
-  return authenticate({
+  const session = authenticate({
     odooUrl: conn.odooUrl,
     db: conn.odooDb,
-    username: cred ? cred.odooUsername : tmp!.odooUsername,
-    password: cred ? cred.secret : tmp!.secret,
+    username: cred.odooUsername,
+    password: cred.secret,
   });
+
+  // Multi-company pinning (optional).
+  if (conn.companyId) {
+    session.context = { ...(session.context || {}), allowed_company_ids: [conn.companyId] };
+  }
+  return session;
+}
+
+function getCompaniesForSession(session: OdooSession): Array<{ id: number; name: string }> {
+  try {
+    const userRows = callKw<any[]>(session, {
+      model: "res.users",
+      method: "read",
+      args: [[session.uid], ["company_id", "company_ids"]],
+      kwargs: {},
+    });
+    const u = userRows && userRows[0];
+    const ids: number[] = [];
+    const primary = u && Array.isArray(u.company_id) ? Number(u.company_id[0]) : undefined;
+    if (primary && Number.isFinite(primary)) ids.push(primary);
+    if (u && Array.isArray(u.company_ids)) {
+      for (const x of u.company_ids) {
+        const n = Number(x);
+        if (Number.isFinite(n)) ids.push(n);
+      }
+    }
+    const uniq = Array.from(new Set(ids)).filter((n) => Number.isFinite(n));
+    if (!uniq.length) return [];
+
+    const rows = callKw<any[]>(session, {
+      model: "res.company",
+      method: "read",
+      args: [uniq, ["name"]],
+      kwargs: {},
+    });
+    return (rows || [])
+      .filter((r) => r && Number.isFinite(Number(r.id)))
+      .map((r) => ({ id: Number(r.id), name: String(r.name || r.id) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
+export function api_getCompanies(input: { connectionId: string }): { companies: Array<{ id: number; name: string }>; companyId?: number } {
+  const conn = getConnection(input.connectionId);
+  if (!conn) throw new Error("Connection not found.");
+  const session = getSessionForConnection(conn.id);
+  const companies = getCompaniesForSession(session);
+  const companyId = conn.companyId && companies.some((c) => c.id === conn.companyId) ? conn.companyId : undefined;
+  return { companies, companyId };
+}
+
+export function api_setConnectionCompany(input: { connectionId: string; companyId?: number }): Connection {
+  const conn = getConnection(input.connectionId);
+  if (!conn) throw new Error("Connection not found.");
+  if (input.companyId === undefined || input.companyId === null || input.companyId === ("" as any)) {
+    conn.companyId = undefined;
+  } else {
+    const n = Number(input.companyId);
+    if (!Number.isFinite(n) || n <= 0) throw new Error("Invalid companyId.");
+    conn.companyId = Math.trunc(n);
+  }
+  touchUpdatedAt(conn);
+  upsertConnection(conn);
+  return conn;
 }
 
 export function api_searchModels(input: {

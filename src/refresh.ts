@@ -3,7 +3,6 @@ import {
   getConnection,
   getCredential,
   getDatasource,
-  getEphemeralCredential,
   touchUpdatedAt,
   upsertDatasource,
 } from "./storage";
@@ -18,21 +17,23 @@ export function refreshDatasourceById(
   const ds = getDatasource(datasourceId);
   if (!ds) throw new Error("Datasource not found.");
 
-  const started = Date.now();
+    const started = Date.now();
   try {
     const conn = getConnection(ds.connectionId);
     if (!conn) throw new Error("Connection not found.");
     const scope = conn.shareCredentials ? "DOCUMENT" : "USER";
     const cred = getCredential(conn.id, scope);
-    const tmp = cred ? undefined : getEphemeralCredential(conn.id);
-    if (!cred && !tmp) throw new Error("Missing credentials. Please login (and optionally remember credentials).");
+    if (!cred) throw new Error("Missing credentials. Please login.");
 
     const session = authenticate({
       odooUrl: conn.odooUrl,
       db: conn.odooDb,
-      username: cred ? cred.odooUsername : tmp!.odooUsername,
-      password: cred ? cred.secret : tmp!.secret,
+      username: cred.odooUsername,
+      password: cred.secret,
     });
+    if (conn.companyId) {
+      session.context = { ...(session.context || {}), allowed_company_ids: [conn.companyId] };
+    }
 
     const domain = parseDomain(ds.domain);
     const baseFields = uniqStrings(ds.fields.map((f) => baseFieldName(f.fieldName)).filter(Boolean));

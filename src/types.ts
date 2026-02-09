@@ -11,6 +11,8 @@ export interface Connection {
   title: string;
   odooUrl: string;
   odooDb: string;
+  // Optional: pin a company for multi-company environments (Odoo context allowed_company_ids).
+  companyId?: number;
   storeConnections: boolean;
   shareCredentials: boolean;
   createdBy: string;

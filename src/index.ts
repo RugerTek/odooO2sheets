@@ -3,6 +3,7 @@ import {
   api_createDatasource,
   api_deleteDatasource,
   api_clearDraftExtraction,
+  api_getCompanies,
   api_getBootstrap,
   api_getDraftExtraction,
   api_getModelFields,
@@ -11,6 +12,7 @@ import {
   api_previewRows,
   api_refreshDatasource,
   api_searchModels,
+  api_setConnectionCompany,
   api_setDraftFields,
   api_setDraftModel,
   api_setCredential,
@@ -47,10 +49,12 @@ function showSidebar(): void {
 (globalThis as any).showSidebar = showSidebar;
 
 (globalThis as any).api_getBootstrap = api_getBootstrap;
+(globalThis as any).api_getCompanies = api_getCompanies;
 (globalThis as any).api_getDraftExtraction = api_getDraftExtraction;
 (globalThis as any).api_listSheets = api_listSheets;
 (globalThis as any).api_createConnection = api_createConnection;
 (globalThis as any).api_updateConnection = api_updateConnection;
+(globalThis as any).api_setConnectionCompany = api_setConnectionCompany;
 (globalThis as any).api_setCredential = api_setCredential;
 (globalThis as any).api_createDatasource = api_createDatasource;
 (globalThis as any).api_refreshDatasource = api_refreshDatasource;

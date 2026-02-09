@@ -5,7 +5,10 @@ export interface OdooSession {
   db: string;
   username: string;
   uid: number;
-  cookie: string; // Cookie header value (session_id)
+  // Password or API key. Stored in-memory and used for JSON-RPC object calls.
+  secret: string;
+  // Base context applied to every execute_kw call (e.g. multi-company).
+  context?: Record<string, unknown>;
 }
 
 export function getVersionInfo(odooUrlInput: string): any {
@@ -58,31 +61,14 @@ export function getVersionInfo(odooUrlInput: string): any {
   };
 }
 
-function jsonRpc(url: string, payload: unknown, cookie?: string): GoogleAppsScript.URL_Fetch.HTTPResponse {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  };
-  if (cookie) headers.Cookie = cookie;
-  return UrlFetchApp.fetch(url, {
+function jsonRpcPost(odooUrl: string, payload: unknown): GoogleAppsScript.URL_Fetch.HTTPResponse {
+  return UrlFetchApp.fetch(`${odooUrl}/jsonrpc`, {
     method: "post",
-    headers,
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true,
     followRedirects: true,
   });
-}
-
-function extractCookie(resp: GoogleAppsScript.URL_Fetch.HTTPResponse): string | undefined {
-  const headers = resp.getAllHeaders() as Record<string, string | string[]>;
-  const setCookie = headers["Set-Cookie"] || headers["set-cookie"];
-  if (!setCookie) return undefined;
-  const arr = Array.isArray(setCookie) ? setCookie : [setCookie];
-  // Keep only cookie pair, discard attributes. Prefer session_id.
-  const session = arr
-    .map((h) => String(h).split(";")[0])
-    .find((c) => c.toLowerCase().startsWith("session_id="));
-  return session || String(arr[0]).split(";")[0];
 }
 
 function parseJson(resp: GoogleAppsScript.URL_Fetch.HTTPResponse): any {
@@ -95,98 +81,91 @@ function parseJson(resp: GoogleAppsScript.URL_Fetch.HTTPResponse): any {
   }
 }
 
-export function authenticate(params: {
-  odooUrl: string;
-  db: string;
-  username: string;
-  password: string;
-}): OdooSession {
-  const odooUrl = normalizeOdooUrl(params.odooUrl);
-  const endpoint = `${odooUrl}/web/session/authenticate`;
+function extractOdooError(body: any): string {
+  return (
+    body?.error?.data?.message ||
+    body?.error?.message ||
+    (body?.__nonJson ? body.__preview : "") ||
+    "Unknown Odoo error"
+  );
+}
+
+function rpcCall(odooUrl: string, service: "common" | "object", method: string, args: unknown[]): any {
   const payload = {
     jsonrpc: "2.0",
     method: "call",
-    params: { db: params.db, login: params.username, password: params.password },
+    params: { service, method, args },
     id: new Date().getTime(),
   };
-  const resp = jsonRpc(endpoint, payload);
+  const resp = jsonRpcPost(odooUrl, payload);
   const body = parseJson(resp);
   if (resp.getResponseCode() >= 400) {
-    const msg =
-      body?.error?.data?.message ||
-      body?.error?.message ||
-      (body?.__nonJson ? body.__preview : resp.getContentText());
-    throw new Error(
-      `No se pudo conectar a Odoo (${resp.getResponseCode()}). Verifica URL y Database. Detalle: ${msg}`
-    );
+    const msg = extractOdooError(body) || resp.getContentText();
+    throw new Error(`Odoo JSON-RPC failed (${resp.getResponseCode()}): ${msg}`);
   }
   if (body?.error) {
-    const msg = body?.error?.data?.message || body?.error?.message || "Unknown Odoo error";
-    const lower = String(msg).toLowerCase();
-    if (lower.includes("database not found")) {
-      throw new Error(
-        `Database no encontrada: "${params.db}". En Odoo Online / Odoo.sh el Database no siempre es el subdominio. Si tenes un link tipo psql postgresql://...@HOST/DB, el Database es lo que va despues de la ultima '/': DB.`
-      );
-    }
-    if (lower.includes("access denied") || lower.includes("wrong login") || lower.includes("authentication")) {
-      throw new Error(
-        "Usuario o password/API key incorrectos. Proba con el mismo usuario exacto que usas en el navegador. Si usas API Key, pegala en el campo password."
-      );
-    }
-    throw new Error(`Login rechazado por Odoo. Detalle: ${msg}`);
+    throw new Error(extractOdooError(body));
   }
-  const uid = body?.result?.uid;
-  // Odoo returns uid=false on wrong credentials (and no cookie).
-  if (uid === false || uid === null || uid === undefined) {
+  return body?.result;
+}
+
+export function authenticate(params: { odooUrl: string; db: string; username: string; password: string }): OdooSession {
+  const odooUrl = normalizeOdooUrl(params.odooUrl);
+  let uid: any;
+  try {
+    uid = rpcCall(odooUrl, "common", "authenticate", [params.db, params.username, params.password, {}]);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const lower = msg.toLowerCase();
+    if (lower.includes("database") && lower.includes("not found")) {
+      throw new Error(
+        `Database no encontrada: "${params.db}". En Odoo Online / Odoo.sh el Database no siempre es el subdominio. ` +
+          `Si tenes un link tipo psql postgresql://.../DB, el Database es lo que va despues de la ultima '/': DB.`
+      );
+    }
+    throw new Error(`No se pudo autenticar contra Odoo. Detalle: ${msg}`);
+  }
+
+  // Wrong creds => uid=false.
+  if (!uid) {
     throw new Error(
-      "Login fallido. Revisa estos 3 puntos: 1) Database (en Odoo Online suele ser el subdominio) 2) Usuario 3) Password. Tip: si en el navegador inicias sesion con 'admin' (sin @), probalo asi aqui tambien."
+      "Usuario o password/API key incorrectos. Si usas API Key, pegala en el campo password (API keys funcionan via JSON-RPC)."
     );
   }
   if (typeof uid !== "number") {
-    const preview = body?.__nonJson ? ` Preview: ${body.__preview}` : "";
-    throw new Error(`Respuesta inesperada de Odoo (no devolvio uid).${preview}`);
+    throw new Error(`Respuesta inesperada de Odoo (uid=${String(uid)}).`);
   }
-  const cookie = extractCookie(resp);
-  if (!cookie) {
-    // Some setups may not return cookie; still allow but later calls might fail.
-    throw new Error(
-      "Login OK pero Odoo no devolvio cookie de sesion (session_id). Esto suele indicar un proxy o bloqueo. Proba nuevamente o revisa configuracion de la instancia."
-    );
-  }
-  return { odooUrl, db: params.db, username: params.username, uid, cookie };
+
+  return { odooUrl, db: params.db, username: params.username, uid, secret: params.password, context: {} };
 }
 
-export function callKw<T>(session: OdooSession, args: {
-  model: string;
-  method: string;
-  args?: unknown[];
-  kwargs?: Record<string, unknown>;
-}): T {
-  const endpoint = `${session.odooUrl}/web/dataset/call_kw/${encodeURIComponent(args.model)}/${encodeURIComponent(
-    args.method
-  )}`;
-  const payload = {
-    jsonrpc: "2.0",
-    method: "call",
-    params: {
-      model: args.model,
-      method: args.method,
-      args: args.args ?? [],
-      kwargs: args.kwargs ?? {},
-    },
-    id: new Date().getTime(),
-  };
-  const resp = jsonRpc(endpoint, payload, session.cookie);
-  const body = parseJson(resp);
-  if (resp.getResponseCode() >= 400) {
-    const msg = body?.error?.data?.message || body?.error?.message || resp.getContentText();
-    throw new Error(`Odoo call_kw failed (${resp.getResponseCode()}): ${msg}`);
-  }
-  if (body?.error) {
-    const msg = body?.error?.data?.message || body?.error?.message || "Unknown Odoo error";
-    throw new Error(`Odoo call_kw error: ${msg}`);
-  }
-  return body.result as T;
+export function callKw<T>(
+  session: OdooSession,
+  args: { model: string; method: string; args?: unknown[]; kwargs?: Record<string, unknown> }
+): T {
+  const model = args.model;
+  const method = args.method;
+  const posArgs = args.args ?? [];
+  const kw = { ...(args.kwargs ?? {}) } as Record<string, unknown>;
+
+  // Merge context (session.context takes lower precedence than explicit kwargs.context).
+  const baseCtx =
+    session.context && typeof session.context === "object" && !Array.isArray(session.context) ? session.context : {};
+  const kwCtxRaw = (kw as any).context;
+  const kwCtx =
+    kwCtxRaw && typeof kwCtxRaw === "object" && !Array.isArray(kwCtxRaw) ? (kwCtxRaw as Record<string, unknown>) : {};
+  (kw as any).context = { ...baseCtx, ...kwCtx };
+
+  const result = rpcCall(session.odooUrl, "object", "execute_kw", [
+    session.db,
+    session.uid,
+    session.secret,
+    model,
+    method,
+    posArgs,
+    kw,
+  ]);
+  return result as T;
 }
 
 export function canUseAdvanced(session: OdooSession): boolean {
@@ -202,3 +181,4 @@ export function canUseAdvanced(session: OdooSession): boolean {
     return false;
   }
 }
+

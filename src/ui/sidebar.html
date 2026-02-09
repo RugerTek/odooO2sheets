@@ -142,8 +142,13 @@
         <input id="login_user" placeholder="ej: admin o tu-email@empresa.com" />
         <label>Password o API Key</label>
         <input id="login_pass" type="password" placeholder="password o api key" />
-        <div class="hint">Si usas API Key de Odoo, pegala aqui como si fuera el password (recomendado).</div>
-        <label><input type="checkbox" id="login_remember" /> Recordar credenciales (solo si queres scheduler)</label>
+        <div class="hint">Podes usar Password o una API Key de Odoo (recomendado). Las credenciales se guardan siempre para que funcione el timer.</div>
+
+        <div id="companyBox" style="display:none; margin-top:10px;">
+          <label>Company (multiempresa)</label>
+          <select id="login_company"></select>
+          <div class="hint">Si tu usuario tiene multiples empresas, elegi cual usar para extraer datos.</div>
+        </div>
         <div class="row" style="margin-top: 8px;">
           <button class="primary" id="btnLogin">Probar login</button>
         </div>
@@ -224,12 +229,13 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09k";
+      const UI_BUILD = "2026-02-09l";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
       let chosenModel = { model: "", name: "" };
       let editingDatasourceId = "";
+      let companyByConn = {}; // connId -> { companies: [{id,name}], companyId }
 
       function setStatus(kind, text, detail) {
         const bar = $("statusBar");
@@ -262,6 +268,28 @@
           .replaceAll(">", "&gt;")
           .replaceAll('"', "&quot;")
           .replaceAll("'", "&#039;");
+      }
+
+      function renderCompanyBox(connId) {
+        const box = $("companyBox");
+        const sel = $("login_company");
+        if (!box || !sel) return;
+        const entry = companyByConn[connId];
+        const companies = entry && entry.companies ? entry.companies : [];
+        if (!companies || companies.length <= 1) {
+          box.style.display = "none";
+          return;
+        }
+        box.style.display = "block";
+        sel.innerHTML = "";
+        companies.forEach((c) => {
+          const o = document.createElement("option");
+          o.value = String(c.id);
+          o.textContent = `${c.name} (#${c.id})`;
+          sel.appendChild(o);
+        });
+        const current = entry.companyId ? String(entry.companyId) : "";
+        if (current) sel.value = current;
       }
 
       function runServer(fnName, args, onOk, onErr, opts) {
@@ -468,6 +496,25 @@
         updateChosenFieldsUI();
       }
 
+      function tryLoadCompaniesForConnection(connId) {
+        if (!connId) return;
+        runServer(
+          "api_getCompanies",
+          [{ connectionId: connId }],
+          (res) => {
+            companyByConn[connId] = { companies: res.companies || [], companyId: res.companyId };
+            renderCompanyBox(connId);
+          },
+          () => {
+            // Ignore if not logged in yet.
+            try {
+              const box = $("companyBox");
+              if (box) box.style.display = "none";
+            } catch (_) {}
+          }
+        );
+      }
+
       function refreshSheets() {
         runServer(
           "api_listSheets",
@@ -503,6 +550,31 @@
 
       $("btnReload").addEventListener("click", loadBootstrap);
       let draftUpdatedAt = "";
+
+      $("login_conn").addEventListener("change", () => {
+        const connId = $("login_conn").value;
+        tryLoadCompaniesForConnection(connId);
+      });
+
+      $("login_company").addEventListener("change", () => {
+        const connId = $("login_conn").value;
+        const companyId = $("login_company").value;
+        if (!connId) return;
+        setStatus("info", "Guardando company...", `Company: ${companyId}`);
+        runServer(
+          "api_setConnectionCompany",
+          [{ connectionId: connId, companyId: companyId ? Number(companyId) : undefined }],
+          () => {
+            if (companyByConn[connId]) companyByConn[connId].companyId = companyId ? Number(companyId) : undefined;
+            setStatus("ok", "Company guardada.");
+            loadBootstrap();
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setStatus("err", "No pude guardar la company.", msg);
+          }
+        );
+      });
 
       function applyDraft(draft) {
         if (!draft) return;
@@ -706,13 +778,20 @@
               connectionId: connId,
               odooUsername: $("login_user").value,
               odooPassword: $("login_pass").value,
-              remember: $("login_remember").checked,
             },
           ],
           (res) => {
             setMsg($("loginMsg"), "ok", `Login OK (uid=${res.uid}).`);
             setStatus("ok", "Login OK.");
             $("btnLogin").disabled = false;
+
+            try {
+              const companies = (res && res.companies) || [];
+              const companyId = res && res.companyId;
+              companyByConn[connId] = { companies, companyId };
+              renderCompanyBox(connId);
+            } catch (_) {}
+
             loadBootstrap();
           },
           (e) => {
