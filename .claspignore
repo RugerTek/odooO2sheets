@@ -1,0 +1,9 @@
+**/.git/**
+**/node_modules/**
+**/scripts/**
+**/*.map
+README.md
+LICENSE
+BACKLOG.md
+STATUS.md
+docs/**

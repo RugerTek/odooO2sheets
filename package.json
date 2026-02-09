@@ -1,0 +1,20 @@
+{
+  "name": "odoo-o2sheets-addon",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node ./scripts/clean.mjs && node ./scripts/tsc.mjs && node ./scripts/bundle.mjs && node ./scripts/copy-static.mjs",
+    "build:clean": "node ./scripts/clean.mjs",
+    "build:ts": "node ./scripts/tsc.mjs",
+    "build:bundle": "node ./scripts/bundle.mjs",
+    "build:copy": "node ./scripts/copy-static.mjs",
+    "lint": "node ./scripts/lint-placeholder.mjs"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.5.0",
+    "@types/google-apps-script": "^1.0.94",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.2"
+  }
+}

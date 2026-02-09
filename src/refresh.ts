@@ -1,0 +1,73 @@
+import { authenticate, callKw } from "./odoo";
+import { getConnection, getCredential, getDatasource, touchUpdatedAt, upsertDatasource } from "./storage";
+import { writeRows } from "./sheets";
+import { parseDomain } from "./util";
+
+export function refreshDatasourceById(
+  datasourceId: string,
+  opts?: { automated?: boolean }
+): { rowsFetched: number } {
+  const ds = getDatasource(datasourceId);
+  if (!ds) throw new Error("Datasource not found.");
+
+  const started = Date.now();
+  try {
+    const conn = getConnection(ds.connectionId);
+    if (!conn) throw new Error("Connection not found.");
+    const scope = conn.shareCredentials ? "DOCUMENT" : "USER";
+    const cred = getCredential(conn.id, scope);
+    if (!cred) throw new Error("Missing credentials. Please login (and optionally remember credentials).");
+
+    const session = authenticate({
+      odooUrl: conn.odooUrl,
+      db: conn.odooDb,
+      username: cred.odooUsername,
+      password: cred.secret,
+    });
+
+    const domain = parseDomain(ds.domain);
+
+    const result = callKw<Record<string, unknown>[]>(session, {
+      model: ds.odooModel,
+      method: "search_read",
+      args: [domain],
+      kwargs: {
+        fields: ds.fields.map((f) => f.fieldName),
+        limit: ds.limit,
+        order: ds.orderBy || undefined,
+      },
+    });
+
+    // Basic runtime guard: Apps Script hard limit is ~6 min, but we preempt at ~5.5 min.
+    const elapsed = Date.now() - started;
+    if (elapsed > 5.5 * 60 * 1000) {
+      throw new Error("Execution time limit exceeded. Add filters (domain) to reduce dataset size.");
+    }
+
+    const rowsFetched = writeRows(ds, result);
+    ds.lastRun = {
+      status: "OK",
+      at: new Date().toISOString(),
+      rows: rowsFetched,
+      durationMs: Date.now() - started,
+    };
+    touchUpdatedAt(ds);
+    upsertDatasource(ds);
+    return { rowsFetched };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    ds.lastRun = {
+      status: "ERROR",
+      at: new Date().toISOString(),
+      rows: 0,
+      durationMs: Date.now() - started,
+      error: msg,
+    };
+    touchUpdatedAt(ds);
+    upsertDatasource(ds);
+    throw e;
+  } finally {
+    void opts;
+  }
+}
+

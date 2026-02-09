@@ -17,6 +17,7 @@ Construir un add-on que permita:
 ## Documentacion
 - `docs/PRD.md` (resumen)
 - `docs/REQUIREMENTS_FULL.md` (fuente completa)
+- `docs/DEV_SETUP.md` (setup de desarrollo)
 - `docs/UX.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DATA_MODEL.md`

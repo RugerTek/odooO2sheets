@@ -5,7 +5,6 @@ Thumbs.db
 
 # Apps Script / clasp
 .clasp.json
-.claspignore
 
 # Build artifacts
 build/
