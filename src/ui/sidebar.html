@@ -24,6 +24,7 @@
       .wrap { padding: 12px; }
       h1 { font-size: 14px; margin: 0 0 10px; }
       h2 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+      h3 { font-size: 12px; margin: 12px 0 8px; color: var(--text); }
       .row { display: flex; gap: 8px; align-items: center; }
       .col { flex: 1; }
       .card {
@@ -69,6 +70,11 @@
       .item .actions { margin-top: 8px; display: flex; gap: 8px; }
       .small { font-size: 12px; color: var(--muted); }
       .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border: 1px solid var(--line); border-bottom-color: rgba(255,255,255,0.25); padding: 1px 6px; border-radius: 7px; background: rgba(255,255,255,0.03); }
+      .step { display: inline-flex; align-items: center; gap: 8px; }
+      .step .n { width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+      .step .t { font-weight: 600; }
     </style>
   </head>
   <body>
@@ -77,7 +83,24 @@
       <div class="small" id="ctx"></div>
 
       <div class="card">
+        <h2>Como Probar (sin programacion)</h2>
+        <div class="hint">
+          1) Crea una Connection (URL + Database).<br />
+          2) Hace Login (con tu usuario Odoo).<br />
+          3) Busca un modelo, elegi campos y guarda un Datasource.<br />
+          4) Apreta <span class="kbd">Refresh</span> para traer datos a la sheet.
+        </div>
+        <div class="hint" style="margin-top: 8px;">
+          Importante: para Odoo Online, el campo <b>Database</b> suele ser el subdominio (ej: <span class="kbd">unika-sa-motor-haus</span>).
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Connections</h2>
+        <div class="row" style="margin-bottom: 8px;">
+          <button id="btnTestUrl">Test URL</button>
+          <div class="small col" id="urlTestOut"></div>
+        </div>
         <div class="list" id="connectionsList"></div>
         <div class="sep"></div>
         <div class="row">
@@ -95,8 +118,12 @@
         </div>
         <label>Web Address (public)</label>
         <input id="c_url" placeholder="https://your-odoo.example.com" />
+        <div class="hint">Ejemplo que pasaste: <span class="kbd">https://unika-sa-motor-haus.odoo.com</span></div>
         <label>Database</label>
         <input id="c_db" placeholder="odoo_db_name" />
+        <div class="hint">
+          Tip rapido: en Odoo Online, suele ser el subdominio. Si no sabes el nombre exacto, lo sacamos antes de probar.
+        </div>
         <div class="grid2">
           <div>
             <label><input type="checkbox" id="c_store" /> Store connections</label>
@@ -120,6 +147,9 @@
         <label>Odoo password</label>
         <input id="login_pass" type="password" placeholder="••••••••" />
         <label><input type="checkbox" id="login_remember" /> Remember my credentials (required for scheduler)</label>
+        <div class="hint">
+          Para probar manualmente, podes dejarlo apagado. Para scheduler automatico, tiene que estar encendido.
+        </div>
         <div class="row">
           <button class="primary" id="btnLogin">Test login / Save</button>
         </div>
@@ -130,7 +160,10 @@
         <h2>Datasources</h2>
         <div class="list" id="datasourcesList"></div>
         <div class="sep"></div>
-        <div class="pill">New datasource</div>
+        <div class="pill">New datasource (wizard simple)</div>
+        <div class="hint" style="margin-top:6px;">
+          Paso 1: Elegi la sheet y la connection. Paso 2: busca el modelo. Paso 3: carga campos y selecciona. Paso 4: guarda.
+        </div>
         <div class="grid2" style="margin-top: 8px;">
           <div>
             <label>Sheet</label>
@@ -141,13 +174,15 @@
             <select id="ds_conn"></select>
           </div>
         </div>
-        <label>Odoo model (technical)</label>
-        <input id="ds_model" placeholder="res.partner" />
+        <label>Odoo model</label>
+        <input id="ds_model" placeholder="Ej: res.partner" />
         <div class="row" style="margin-top: 8px;">
           <input id="model_query" class="col" placeholder="Search models (e.g. partner, invoice, sale)" />
           <button id="btnSearchModels">Search</button>
         </div>
         <div id="modelResults" class="list" style="margin-top: 8px;"></div>
+        <h3 class="step"><span class="n">3</span><span class="t">Campos</span></h3>
+        <div class="hint">Podes seleccionar desde la lista o pegar un CSV.</div>
         <label>Fields (CSV)</label>
         <input id="ds_fields" placeholder="id,name,email,phone" />
         <div class="row" style="margin-top: 8px;">
@@ -155,6 +190,10 @@
           <div class="small col">Uses Odoo `fields_get` (requires login).</div>
         </div>
         <div id="fieldResults" class="list" style="margin-top: 8px; max-height: 180px; overflow: auto;"></div>
+        <div class="sep"></div>
+        <h3 class="step"><span class="n">4</span><span class="t">Orden de columnas</span></h3>
+        <div class="hint">Selecciona campos y luego ajusta el orden.</div>
+        <div id="selectedFields" class="list" style="margin-top: 8px;"></div>
         <div class="grid2">
           <div>
             <label>Limit</label>
@@ -190,6 +229,8 @@
       const $ = (id) => document.getElementById(id);
 
       let state = { context: null, connections: [], datasources: [] };
+      let selectedFields = []; // [{fieldName,label,type}]
+      let fieldMeta = {}; // fieldName -> {label,type,relation,help}
 
       function setMsg(el, kind, text) {
         el.innerHTML = "";
@@ -212,6 +253,20 @@
             console.error(e);
           })
           .api_getBootstrap();
+      }
+
+      function suggestDbFromUrl() {
+        const url = $("c_url").value.trim();
+        if (!url) return;
+        try {
+          const u = new URL(url);
+          const host = u.hostname || "";
+          // Odoo Online typical: <db>.odoo.com
+          if (host.endsWith(".odoo.com")) {
+            const sub = host.split(".")[0];
+            if (sub && !$("c_db").value.trim()) $("c_db").value = sub;
+          }
+        } catch (_) {}
       }
 
       function render() {
@@ -303,6 +358,25 @@
       }
 
       $("btnReload").addEventListener("click", loadBootstrap);
+      $("c_url").addEventListener("blur", suggestDbFromUrl);
+
+      $("btnTestUrl").addEventListener("click", () => {
+        const url = $("c_url").value || (state.connections[0] && state.connections[0].odooUrl) || "";
+        if (!url) {
+          $("urlTestOut").textContent = "Pega la URL de Odoo primero.";
+          return;
+        }
+        $("urlTestOut").textContent = "Probando...";
+        google.script.run
+          .withSuccessHandler((res) => {
+            const v = res && (res.server_version || res.server_version_info || res.version || "");
+            $("urlTestOut").textContent = v ? `OK (version: ${JSON.stringify(v)})` : "OK";
+          })
+          .withFailureHandler((e) => {
+            $("urlTestOut").textContent = "Error: " + (e.message || String(e));
+          })
+          .api_testOdooUrl({ odooUrl: url });
+      });
 
       $("btnCreateConn").addEventListener("click", () => {
         setMsg($("dsMsg"), "", "");
@@ -341,6 +415,10 @@
 
       $("btnCreateDs").addEventListener("click", () => {
         setMsg($("dsMsg"), "", "");
+        const fieldArr =
+          selectedFields.length > 0
+            ? selectedFields.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }))
+            : [];
         google.script.run
           .withSuccessHandler((ds) => {
             setMsg($("dsMsg"), "ok", `Datasource saved: ${ds.id}`);
@@ -352,6 +430,7 @@
             connectionId: $("ds_conn").value,
             odooModel: $("ds_model").value,
             fieldsCsv: $("ds_fields").value,
+            fields: fieldArr,
             limit: Number($("ds_limit").value || 80),
             domain: $("ds_domain").value,
             orderBy: $("ds_order").value,
@@ -408,6 +487,11 @@
           return;
         }
 
+        fieldMeta = {};
+        fields.forEach((f) => {
+          fieldMeta[f.fieldName] = f;
+        });
+
         const current = new Set(
           $("ds_fields")
             .value.split(",")
@@ -432,6 +516,48 @@
         });
       }
 
+      function syncSelectedFieldsFromCsvIfEmpty() {
+        if (selectedFields.length > 0) return;
+        const csv = $("ds_fields")
+          .value.split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        selectedFields = csv.map((name) => {
+          const meta = fieldMeta[name] || {};
+          return { fieldName: name, label: meta.label || name, type: meta.type || "" };
+        });
+      }
+
+      function renderSelectedFields() {
+        const root = $("selectedFields");
+        root.innerHTML = "";
+        if (selectedFields.length === 0) {
+          const d = document.createElement("div");
+          d.className = "small";
+          d.textContent = "Selecciona campos (Load fields) o pega un CSV.";
+          root.appendChild(d);
+          return;
+        }
+        selectedFields.forEach((f, idx) => {
+          const it = document.createElement("div");
+          it.className = "item";
+          it.innerHTML = `
+            <div class="row">
+              <div class="col">
+                <div class="title">${escapeHtml(f.fieldName)}</div>
+                <div class="meta">${escapeHtml(f.label || "")}</div>
+              </div>
+              <div class="row">
+                <button data-action="moveFieldUp" data-idx="${idx}">Up</button>
+                <button data-action="moveFieldDown" data-idx="${idx}">Down</button>
+                <button class="danger" data-action="removeField" data-idx="${idx}">Remove</button>
+              </div>
+            </div>
+          `;
+          root.appendChild(it);
+        });
+      }
+
       $("btnLoadFields").addEventListener("click", () => {
         const connId = $("ds_conn").value || $("login_conn").value;
         const model = $("ds_model").value;
@@ -445,7 +571,13 @@
         }
         $("fieldResults").innerHTML = `<div class="small">Loading fields...</div>`;
         google.script.run
-          .withSuccessHandler((items) => renderFieldResults(items))
+          .withSuccessHandler((items) => {
+            renderFieldResults(items);
+            // keep selection in sync with CSV if user already typed it
+            selectedFields = [];
+            syncSelectedFieldsFromCsvIfEmpty();
+            renderSelectedFields();
+          })
           .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
           .api_getModelFields({ connectionId: connId, model });
       });
@@ -467,6 +599,17 @@
           if (cb.checked) set.add(field);
           else set.delete(field);
           $("ds_fields").value = Array.from(set).join(",");
+
+          // Maintain selectedFields ordered by selection time.
+          if (cb.checked) {
+            const meta = fieldMeta[field] || {};
+            if (!selectedFields.some((x) => x.fieldName === field)) {
+              selectedFields.push({ fieldName: field, label: meta.label || field, type: meta.type || "" });
+            }
+          } else {
+            selectedFields = selectedFields.filter((x) => x.fieldName !== field);
+          }
+          renderSelectedFields();
           return;
         }
 
@@ -475,6 +618,25 @@
           $("ds_model").value = model;
           // Auto-load fields after picking.
           $("btnLoadFields").click();
+          return;
+        }
+
+        if (action === "moveFieldUp" || action === "moveFieldDown" || action === "removeField") {
+          const idx = Number(btn.getAttribute("data-idx"));
+          if (!Number.isFinite(idx)) return;
+          if (action === "removeField") {
+            selectedFields.splice(idx, 1);
+          } else if (action === "moveFieldUp" && idx > 0) {
+            const t = selectedFields[idx - 1];
+            selectedFields[idx - 1] = selectedFields[idx];
+            selectedFields[idx] = t;
+          } else if (action === "moveFieldDown" && idx < selectedFields.length - 1) {
+            const t = selectedFields[idx + 1];
+            selectedFields[idx + 1] = selectedFields[idx];
+            selectedFields[idx] = t;
+          }
+          $("ds_fields").value = selectedFields.map((x) => x.fieldName).join(",");
+          renderSelectedFields();
           return;
         }
 

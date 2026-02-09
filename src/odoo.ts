@@ -8,6 +8,26 @@ export interface OdooSession {
   cookie: string; // Cookie header value (session_id)
 }
 
+export function getVersionInfo(odooUrlInput: string): any {
+  const odooUrl = normalizeOdooUrl(odooUrlInput);
+  const url = `${odooUrl}/web/webclient/version_info`;
+  const resp = UrlFetchApp.fetch(url, {
+    method: "get",
+    muteHttpExceptions: true,
+    followRedirects: true,
+    headers: { Accept: "application/json" },
+  });
+  const code = resp.getResponseCode();
+  const text = resp.getContentText() || "";
+  if (code >= 400) throw new Error(`Odoo URL check failed (${code}). Is the instance publicly accessible?`);
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Some proxies return HTML; still return a small hint.
+    return { raw: text.slice(0, 200) };
+  }
+}
+
 function jsonRpc(url: string, payload: unknown, cookie?: string): GoogleAppsScript.URL_Fetch.HTTPResponse {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -117,4 +137,3 @@ export function canUseAdvanced(session: OdooSession): boolean {
     return false;
   }
 }
-

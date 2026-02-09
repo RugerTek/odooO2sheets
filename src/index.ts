@@ -7,6 +7,7 @@ import {
   api_searchModels,
   api_setCredential,
   api_setDatasourceSchedule,
+  api_testOdooUrl,
   api_updateConnection,
   refreshDatasourceById,
 } from "./service";
@@ -48,5 +49,6 @@ function showSidebar(): void {
 (globalThis as any).api_setDatasourceSchedule = api_setDatasourceSchedule;
 (globalThis as any).api_searchModels = api_searchModels;
 (globalThis as any).api_getModelFields = api_getModelFields;
+(globalThis as any).api_testOdooUrl = api_testOdooUrl;
 
 (globalThis as any).runSchedulerTick_ = runSchedulerTick_;

@@ -12,7 +12,7 @@ import {
   upsertConnection,
   upsertDatasource,
 } from "./storage";
-import { authenticate, canUseAdvanced, callKw, OdooSession } from "./odoo";
+import { authenticate, canUseAdvanced, callKw, getVersionInfo, OdooSession } from "./odoo";
 import { Connection, Credential, Datasource, DatasourceField, SchedulerConfig } from "./types";
 import { normalizeConnectionName, normalizeOdooUrl, nowIso, parseDomain, uuidV4 } from "./util";
 import { ensureSchedulerTrigger } from "./scheduler";
@@ -28,6 +28,10 @@ export function api_getBootstrap(): {
     connections: listConnections(),
     datasources: listDatasources(),
   };
+}
+
+export function api_testOdooUrl(input: { odooUrl: string }): any {
+  return getVersionInfo(input.odooUrl);
 }
 
 export function api_createConnection(input: {
@@ -200,7 +204,8 @@ export function api_createDatasource(input: {
   sheetName: string;
   connectionId: string;
   odooModel: string;
-  fieldsCsv: string;
+  fieldsCsv?: string;
+  fields?: Array<{ fieldName: string; label?: string; order: number }>;
   limit: number;
   domain?: string;
   orderBy?: string;
@@ -214,20 +219,25 @@ export function api_createDatasource(input: {
   const model = input.odooModel.trim();
   if (!model) throw new Error("Odoo model is required (e.g. res.partner).");
 
-  const fields = input.fieldsCsv
+  const fromArray = (input.fields || []).filter((f) => f && f.fieldName);
+  const fromCsv = (input.fieldsCsv || "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean);
-  if (fields.length === 0) throw new Error("At least one field is required.");
+    .filter(Boolean)
+    .map((f, idx) => ({ fieldName: f, label: f, order: idx }));
+  const chosen = fromArray.length > 0 ? fromArray : fromCsv;
+  if (chosen.length === 0) throw new Error("At least one field is required.");
 
   // Basic validation of domain JSON now (if present).
   parseDomain(input.domain);
 
-  const dsFields: DatasourceField[] = fields.map((f, idx) => ({
-    fieldName: f,
-    label: f,
-    order: idx,
-  }));
+  const dsFields: DatasourceField[] = chosen
+    .map((f) => ({
+      fieldName: String(f.fieldName),
+      label: (f.label && String(f.label)) || String(f.fieldName),
+      order: Number.isFinite(f.order as any) ? Number(f.order) : 0,
+    }))
+    .sort((a, b) => a.order - b.order);
 
   const ds: Datasource = {
     id: uuidV4(),
