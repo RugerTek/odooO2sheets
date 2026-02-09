@@ -1,0 +1,583 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --muted: #475569;
+        --text: #0f172a;
+        --line: rgba(15, 23, 42, 0.12);
+        --accent: #16a34a;
+        --danger: #dc2626;
+        --info: #2563eb;
+      }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+      .wrap { padding: 14px; }
+      .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      h1 { font-size: 16px; margin: 0; }
+      .muted { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .col { flex: 1; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+      input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid rgba(15, 23, 42, 0.18); border-radius: 10px; }
+      button { border: 1px solid rgba(15, 23, 42, 0.14); background: rgba(15, 23, 42, 0.04); color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+      button.primary { border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.10); }
+      button.danger { border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.08); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .msg { margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(15,23,42,0.02); }
+      .msg.ok { border-color: rgba(22,163,74,0.35); }
+      .msg.err { border-color: rgba(220,38,38,0.35); }
+      .sep { height: 1px; background: var(--line); margin: 12px 0; }
+      .panelTitle { font-weight: 700; margin: 0 0 6px; }
+      .list { display: flex; flex-direction: column; gap: 10px; }
+      .item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,0.02); }
+      .title { font-weight: 700; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+      .tag { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 26px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 12px; color: var(--muted); }
+      .tag.primary { border-color: rgba(22,163,74,0.35); color: #166534; background: rgba(22,163,74,0.08); }
+      .tag.info { border-color: rgba(37,99,235,0.35); color: #1d4ed8; background: rgba(37,99,235,0.08); }
+      .scroll { max-height: 320px; overflow: auto; padding-right: 4px; }
+      table.sample { width: 100%; border-collapse: collapse; font-size: 12px; }
+      table.sample th, table.sample td { border: 1px solid var(--line); padding: 6px 8px; vertical-align: top; }
+      table.sample th { background: rgba(15, 23, 42, 0.03); text-align: left; }
+      .smallBtn { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+      label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 2px; }
+      .crumbs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .crumbBtn { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+      .mini { font-size: 12px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Seleccionar columnas</h1>
+          <div class="muted" id="subtitle"></div>
+        </div>
+        <div class="row">
+          <button id="btnCancel" type="button">Cancelar</button>
+          <button class="primary" id="btnSave" type="button">Guardar</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 12px;">
+        <button id="btnLoadFields" type="button">Cargar columnas</button>
+        <div class="muted col">Tip: usa el sample abajo para confirmar que elegiste la columna correcta.</div>
+        <button id="btnAddCommon" type="button">Agregar comunes</button>
+        <button id="btnClearSelected" type="button">Quitar todas</button>
+      </div>
+
+      <div id="msg"></div>
+
+      <div class="row" style="margin-top: 10px;">
+        <div class="crumbs col">
+          <span class="tag info" id="pathTag"></span>
+          <span class="mini" id="pathHint"></span>
+        </div>
+        <button class="crumbBtn" id="btnBack" type="button" disabled>Back</button>
+        <button class="crumbBtn" id="btnHome" type="button">Inicio</button>
+      </div>
+
+      <div class="grid2" style="margin-top: 12px;">
+        <div>
+          <div class="panelTitle">Disponibles</div>
+          <div class="row">
+            <input id="fieldQuery" class="col" placeholder="Buscar columna (ej: name, email, date)" />
+            <button id="btnClear" type="button">Limpiar</button>
+          </div>
+          <div class="scroll" style="margin-top:10px;">
+            <div class="list" id="fieldList"></div>
+          </div>
+        </div>
+        <div>
+          <div class="panelTitle">Seleccionadas</div>
+          <div class="scroll" style="margin-top:10px;">
+            <div class="list" id="selectedList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="row">
+        <div class="col">
+          <div class="panelTitle">Sample (5 filas)</div>
+          <div class="muted">Se actualiza automaticamente cuando cambias columnas (puede tardar unos segundos).</div>
+        </div>
+        <button id="btnSample" type="button">Actualizar sample</button>
+      </div>
+      <div id="sampleMsg"></div>
+      <div style="overflow:auto; max-height: 260px; margin-top: 10px;" id="sampleWrap"></div>
+    </div>
+
+    <script>
+      const INITIAL = JSON.parse("<?= initialJson ?>");
+      const $ = (id) => document.getElementById(id);
+
+      let allFields = [];
+      let fieldMeta = {}; // fieldName -> meta
+      let selected = (INITIAL.selectedFields || []).map((f) => ({
+        fieldName: f.fieldName,
+        label: f.label || f.fieldName,
+        type: f.type || "",
+      }));
+      let sampleTimer = null;
+      let nav = [{ model: INITIAL.model, fieldName: "", label: INITIAL.modelName || INITIAL.model }];
+      let cache = {}; // model -> { fields:[], meta:{} }
+
+      function setMsg(kind, text) {
+        const el = $("msg");
+        el.innerHTML = "";
+        if (!text) return;
+        const d = document.createElement("div");
+        d.className = "msg " + (kind === "ok" ? "ok" : "err");
+        d.textContent = text;
+        el.appendChild(d);
+      }
+      function setSampleMsg(kind, text) {
+        const el = $("sampleMsg");
+        el.innerHTML = "";
+        if (!text) return;
+        const d = document.createElement("div");
+        d.className = "msg " + (kind === "ok" ? "ok" : "err");
+        d.textContent = text;
+        el.appendChild(d);
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function typeTag(type) {
+        const t = String(type || "").toLowerCase();
+        if (t === "many2one") return "M2O";
+        if (t === "one2many") return "O2M";
+        if (t === "many2many") return "M2M";
+        if (t === "char") return "Ab";
+        if (t === "text") return "TXT";
+        if (t === "integer") return "#";
+        if (t === "float") return "0.0";
+        if (t === "monetary") return "$";
+        if (t === "date") return "DATE";
+        if (t === "datetime") return "DT";
+        if (t === "boolean") return "T/F";
+        if (t === "selection") return "SEL";
+        return t ? t.toUpperCase().slice(0, 4) : "?";
+      }
+
+      function commonFieldNames() {
+        // Generic "good defaults" across many Odoo models.
+        return [
+          "id",
+          "name",
+          "display_name",
+          "create_date",
+          "write_date",
+          "date",
+          "ref",
+          "amount_total",
+          "amount",
+          "state",
+        ];
+      }
+
+      function currentPrefix() {
+        return nav
+          .slice(1)
+          .map((x) => x.fieldName)
+          .filter(Boolean)
+          .join(".");
+      }
+
+      function updatePathUI() {
+        const prefix = currentPrefix();
+        $("pathTag").textContent = prefix ? prefix : "(raiz)";
+        const depth = nav.length - 1;
+        $("btnBack").disabled = depth <= 0;
+        $("pathHint").textContent = depth > 0 ? `Nivel ${depth} (max 3)` : "Selecciona un campo many2one y usa > para entrar";
+      }
+
+      function addField(fieldName, meta) {
+        const name = String(fieldName || "").trim();
+        if (!name) return;
+        if (selected.some((x) => x.fieldName === name)) return;
+        const m = meta || {};
+        selected.push({
+          fieldName: name,
+          label: m.label || name,
+          type: m.type || "",
+        });
+      }
+
+      function runServer(fnName, args, onOk, onErr) {
+        const g = window.google;
+        try {
+          const runner = g.script.run
+            .withSuccessHandler((res) => onOk && onOk(res))
+            .withFailureHandler((e) => onErr && onErr(e));
+          const arr = Array.isArray(args) ? args : args === undefined ? [] : [args];
+          const fn = runner && runner[fnName];
+          if (typeof fn !== "function") return onErr && onErr(new Error(`Missing server function: ${fnName}`));
+          fn.apply(runner, arr);
+        } catch (e) {
+          onErr && onErr(e);
+        }
+      }
+
+      function renderAvailable() {
+        const root = $("fieldList");
+        root.innerHTML = "";
+        if (!allFields.length) {
+          const d = document.createElement("div");
+          d.className = "muted";
+          d.textContent = "Carga columnas para ver la lista.";
+          root.appendChild(d);
+          return;
+        }
+        const q = ($("fieldQuery").value || "").trim().toLowerCase();
+        const current = new Set(selected.map((x) => x.fieldName));
+        const prefix = currentPrefix();
+        const expanded = [];
+        allFields.forEach((f) => {
+          expanded.push(f);
+          if (String(f.type).toLowerCase() === "many2one") {
+            expanded.push({ fieldName: `${f.fieldName}.display_name`, label: `${f.label} (display)`, type: "char" });
+            expanded.push({ fieldName: `${f.fieldName}.id`, label: `${f.label} (id)`, type: "integer" });
+          }
+        });
+        const filtered = q
+          ? expanded.filter((f) => String(f.fieldName).toLowerCase().includes(q) || String(f.label).toLowerCase().includes(q))
+          : expanded;
+
+        // Sort with common fields first (more intuitive).
+        const common = new Set(commonFieldNames());
+        filtered.sort((a, b) => {
+          const ac = common.has(a.fieldName) ? -1 : 0;
+          const bc = common.has(b.fieldName) ? -1 : 0;
+          if (ac !== bc) return ac - bc;
+          return String(a.fieldName).localeCompare(String(b.fieldName));
+        });
+        filtered.forEach((f) => {
+          const it = document.createElement("div");
+          it.className = "item";
+          const spec = prefix ? `${prefix}.${f.fieldName}` : f.fieldName;
+          const checked = current.has(spec) ? "checked" : "";
+          const baseName = String(f.fieldName).split(".")[0];
+          const meta = fieldMeta[baseName] || f || {};
+          const typeForItem = String(f.fieldName).includes(".") ? (f.type || "") : (meta.type || f.type || "");
+          const isM2o =
+            String(meta.type || f.type).toLowerCase() === "many2one" &&
+            !String(f.fieldName).includes(".") &&
+            nav.length < 4;
+          const rel = meta.relation ? ` -> ${meta.relation}` : "";
+          it.innerHTML = `
+            <div class="row">
+              <label class="col" style="margin:0;">
+                <input type="checkbox" data-action="toggle" data-spec="${escapeHtml(spec)}" data-label="${escapeHtml(
+                  f.label || f.fieldName
+                )}" data-type="${escapeHtml(typeForItem)}" ${checked} />
+                <span class="title">${escapeHtml(f.fieldName)}</span>
+                <span class="pill">${escapeHtml(typeForItem)}</span>
+              </label>
+              ${isM2o ? `<button class="smallBtn" data-action="drill" data-field="${escapeHtml(baseName)}" type="button">&gt;</button>` : ""}
+            </div>
+            <div class="meta">${escapeHtml(f.label || "")}${escapeHtml(rel)}</div>
+          `;
+          root.appendChild(it);
+        });
+      }
+
+      function renderSelected() {
+        const root = $("selectedList");
+        root.innerHTML = "";
+        if (!selected.length) {
+          const d = document.createElement("div");
+          d.className = "muted";
+          d.textContent = "Selecciona columnas a la izquierda.";
+          root.appendChild(d);
+          return;
+        }
+        selected.forEach((f, idx) => {
+          const it = document.createElement("div");
+          it.className = "item";
+          it.innerHTML = `
+            <div class="row">
+              <div class="tag primary">${escapeHtml(typeTag(f.type))}</div>
+              <div class="col">
+                <div class="title">${escapeHtml(f.fieldName)} <span class="pill">${escapeHtml(f.type || "")}</span></div>
+                <label>Encabezado</label>
+                <input data-action="setLabel" data-idx="${idx}" value="${escapeHtml(f.label || f.fieldName)}" />
+              </div>
+              <div class="row">
+                <button class="smallBtn" data-action="up" data-idx="${idx}" type="button">Up</button>
+                <button class="smallBtn" data-action="down" data-idx="${idx}" type="button">Down</button>
+                <button class="smallBtn danger" data-action="remove" data-idx="${idx}" type="button">X</button>
+              </div>
+            </div>
+          `;
+          root.appendChild(it);
+        });
+      }
+
+      function loadFields() {
+        setMsg("", "");
+        $("btnLoadFields").disabled = true;
+        setMsg("ok", "Cargando columnas...");
+        const model = nav[nav.length - 1].model;
+        if (cache[model]) {
+          allFields = cache[model].fields || [];
+          fieldMeta = cache[model].meta || {};
+          renderAvailable();
+          renderSelected();
+          $("btnLoadFields").disabled = false;
+          setMsg("", "");
+          updatePathUI();
+          scheduleSample();
+          return;
+        }
+        runServer(
+          "api_getModelFields",
+          [{ connectionId: INITIAL.connectionId, model }],
+          (items) => {
+            allFields = items || [];
+            fieldMeta = {};
+            allFields.forEach((f) => (fieldMeta[f.fieldName] = f));
+            cache[model] = { fields: allFields, meta: fieldMeta };
+
+            // Ensure selected has type/label if missing.
+            selected = selected
+              .filter((x) => x && x.fieldName)
+              .map((x) => {
+                const base = String(x.fieldName).split(".")[0];
+                const meta = fieldMeta[base] || {};
+                return { fieldName: x.fieldName, label: x.label || meta.label || x.fieldName, type: x.type || meta.type || "" };
+              });
+
+            renderAvailable();
+            renderSelected();
+            $("btnLoadFields").disabled = false;
+            setMsg("", "");
+            updatePathUI();
+            scheduleSample();
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+            $("btnLoadFields").disabled = false;
+          }
+        );
+      }
+
+      function renderSample(fields, rows) {
+        const wrap = $("sampleWrap");
+        wrap.innerHTML = "";
+        if (!fields || fields.length === 0) return;
+        const table = document.createElement("table");
+        table.className = "sample";
+        const thead = document.createElement("thead");
+        const trh = document.createElement("tr");
+        fields.forEach((f) => {
+          const th = document.createElement("th");
+          th.textContent = f;
+          trh.appendChild(th);
+        });
+        thead.appendChild(trh);
+        table.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        (rows || []).forEach((r) => {
+          const tr = document.createElement("tr");
+          fields.forEach((_, idx) => {
+            const td = document.createElement("td");
+            const v = r ? r[idx] : "";
+            td.textContent = v === null || v === undefined ? "" : String(v);
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+      }
+
+      function loadSample() {
+        setSampleMsg("", "");
+        if (!selected.length) return setSampleMsg("err", "Selecciona al menos 1 columna.");
+        $("btnSample").disabled = true;
+        setSampleMsg("ok", "Cargando sample...");
+        runServer(
+          "api_previewRows",
+          [
+            {
+              connectionId: INITIAL.connectionId,
+              model: INITIAL.model,
+              fields: selected.map((f) => f.fieldName),
+              limit: 5,
+              orderBy: "id desc",
+            },
+          ],
+          (res) => {
+            renderSample(res.fields, res.rows);
+            setSampleMsg("ok", `OK: ${res.rows.length} fila(s)`);
+            $("btnSample").disabled = false;
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setSampleMsg("err", msg);
+            $("btnSample").disabled = false;
+          }
+        );
+      }
+
+      function scheduleSample() {
+        if (sampleTimer) clearTimeout(sampleTimer);
+        sampleTimer = setTimeout(() => {
+          sampleTimer = null;
+          if (!selected.length) return;
+          loadSample();
+        }, 700);
+      }
+
+      function saveAndClose() {
+        setMsg("", "");
+        if (!selected.length) return setMsg("err", "Selecciona al menos 1 columna.");
+        $("btnSave").disabled = true;
+        runServer(
+          "api_setDraftFields",
+          [
+            {
+              connectionId: INITIAL.connectionId,
+              model: INITIAL.model,
+              fields: selected.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx, type: f.type || "" })),
+            },
+          ],
+          () => {
+            google.script.host.close();
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+            $("btnSave").disabled = false;
+          }
+        );
+      }
+
+      document.body.addEventListener("click", (ev) => {
+        const cb = ev.target && ev.target.closest && ev.target.closest("input[type=checkbox][data-action]");
+        const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
+        const action = cb ? cb.getAttribute("data-action") : btn ? btn.getAttribute("data-action") : null;
+        if (!action) return;
+
+        if (action === "toggle") {
+          const spec = (cb.getAttribute("data-spec") || "").trim();
+          if (!spec) return;
+          if (cb.checked) {
+            if (!selected.some((x) => x.fieldName === spec)) {
+              const rawLabel = (cb.getAttribute("data-label") || "").trim();
+              const rawType = (cb.getAttribute("data-type") || "").trim();
+              const prefix = currentPrefix();
+              const label = prefix ? `${rawLabel} (${prefix})` : rawLabel || spec;
+              selected.push({ fieldName: spec, label, type: rawType || "" });
+            }
+          } else {
+            selected = selected.filter((x) => x.fieldName !== spec);
+          }
+          renderSelected();
+          scheduleSample();
+          return;
+        }
+
+        if (action === "drill") {
+          const baseField = (btn.getAttribute("data-field") || "").trim();
+          const meta = fieldMeta[baseField];
+          if (!meta || String(meta.type).toLowerCase() !== "many2one" || !meta.relation) return;
+          if (nav.length >= 4) return setMsg("err", "Maximo 3 niveles de anidado.");
+          nav.push({ model: meta.relation, fieldName: baseField, label: meta.label || baseField });
+          $("fieldQuery").value = "";
+          loadFields();
+          return;
+        }
+
+        const idx = Number(btn.getAttribute("data-idx"));
+        if (!Number.isFinite(idx) || !selected[idx]) return;
+        if (action === "remove") selected.splice(idx, 1);
+        if (action === "up" && idx > 0) {
+          const t = selected[idx - 1];
+          selected[idx - 1] = selected[idx];
+          selected[idx] = t;
+        }
+        if (action === "down" && idx < selected.length - 1) {
+          const t = selected[idx + 1];
+          selected[idx + 1] = selected[idx];
+          selected[idx] = t;
+        }
+        renderSelected();
+        renderAvailable();
+        scheduleSample();
+      });
+
+      document.body.addEventListener("input", (ev) => {
+        const inp = ev.target && ev.target.closest && ev.target.closest("input[data-action]");
+        if (!inp) return;
+        if (inp.getAttribute("data-action") !== "setLabel") return;
+        const idx = Number(inp.getAttribute("data-idx"));
+        if (!Number.isFinite(idx) || !selected[idx]) return;
+        selected[idx].label = inp.value;
+      });
+
+      $("btnLoadFields").addEventListener("click", loadFields);
+      $("fieldQuery").addEventListener("input", renderAvailable);
+      $("btnClear").addEventListener("click", () => { $("fieldQuery").value = ""; renderAvailable(); });
+      $("btnSample").addEventListener("click", loadSample);
+      $("btnSave").addEventListener("click", saveAndClose);
+      $("btnCancel").addEventListener("click", () => google.script.host.close());
+      $("btnBack").addEventListener("click", () => {
+        if (nav.length <= 1) return;
+        nav.pop();
+        $("fieldQuery").value = "";
+        loadFields();
+      });
+      $("btnHome").addEventListener("click", () => {
+        nav = [{ model: INITIAL.model, fieldName: "", label: INITIAL.modelName || INITIAL.model }];
+        $("fieldQuery").value = "";
+        loadFields();
+      });
+      $("btnAddCommon").addEventListener("click", () => {
+        if (!allFields.length) return;
+        const wanted = commonFieldNames();
+        const prefix = currentPrefix();
+        wanted.forEach((name) => {
+          const base = name.split(".")[0];
+          const meta = fieldMeta[base];
+          // fields_get doesn't include "id" reliably, but it's always readable.
+          if (!meta && base !== "id" && base !== "display_name") return;
+          const spec = prefix ? `${prefix}.${name}` : name;
+          const label = prefix ? `${(meta && meta.label) || name} (${prefix})` : (meta && meta.label) || name;
+          addField(spec, { label, type: (meta && meta.type) || "" });
+        });
+        renderSelected();
+        renderAvailable();
+        scheduleSample();
+      });
+      $("btnClearSelected").addEventListener("click", () => {
+        selected = [];
+        renderSelected();
+        renderAvailable();
+        setSampleMsg("", "");
+        $("sampleWrap").innerHTML = "";
+      });
+
+      $("subtitle").textContent = `Conexion: ${INITIAL.connectionTitle || INITIAL.connectionId} | Tabla: ${INITIAL.modelName || INITIAL.model} (${INITIAL.model})`;
+
+      // Try to load fields automatically for a smoother flow.
+      loadFields();
+    </script>
+  </body>
+</html>

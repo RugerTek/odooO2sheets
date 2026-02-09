@@ -129,7 +129,9 @@ export function authenticate(params: {
       );
     }
     if (lower.includes("access denied") || lower.includes("wrong login") || lower.includes("authentication")) {
-      throw new Error("Usuario o password incorrectos. Proba con el mismo usuario exacto que usas en el navegador.");
+      throw new Error(
+        "Usuario o password/API key incorrectos. Proba con el mismo usuario exacto que usas en el navegador. Si usas API Key, pegala en el campo password."
+      );
     }
     throw new Error(`Login rechazado por Odoo. Detalle: ${msg}`);
   }
@@ -137,7 +139,7 @@ export function authenticate(params: {
   // Odoo returns uid=false on wrong credentials (and no cookie).
   if (uid === false || uid === null || uid === undefined) {
     throw new Error(
-      "Login fallido. Revisá estos 3 puntos: 1) Database (en Odoo Online suele ser el subdominio) 2) Usuario 3) Password. Tip: si en el navegador inicias sesion con 'admin' (sin @), probalo asi aqui tambien."
+      "Login fallido. Revisa estos 3 puntos: 1) Database (en Odoo Online suele ser el subdominio) 2) Usuario 3) Password. Tip: si en el navegador inicias sesion con 'admin' (sin @), probalo asi aqui tambien."
     );
   }
   if (typeof uid !== "number") {

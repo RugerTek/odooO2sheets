@@ -1,0 +1,211 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --muted: #475569;
+        --text: #0f172a;
+        --line: rgba(15, 23, 42, 0.12);
+        --accent: #16a34a;
+        --danger: #dc2626;
+        --info: #2563eb;
+      }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+      .wrap { padding: 14px; }
+      .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      h1 { font-size: 16px; margin: 0; }
+      .muted { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .card { border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: rgba(15,23,42,0.01); margin-top: 12px; }
+      label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 2px; }
+      input, select, textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid rgba(15,23,42,0.18); border-radius: 10px; }
+      button { border: 1px solid rgba(15, 23, 42, 0.14); background: rgba(15, 23, 42, 0.04); color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+      button.primary { border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.10); }
+      button.danger { border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.08); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .row { display: flex; gap: 10px; align-items: center; }
+      .col { flex: 1; }
+      .msg { margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(15,23,42,0.02); }
+      .msg.ok { border-color: rgba(22,163,74,0.35); }
+      .msg.err { border-color: rgba(220,38,38,0.35); }
+      .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; background: #fff; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      .presetRow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+      .presetRow button { padding: 8px 10px; border-radius: 999px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Timer</h1>
+          <div class="muted" id="subtitle"></div>
+        </div>
+        <div class="row">
+          <button id="btnClose" type="button">Cerrar</button>
+          <button class="primary" id="btnSave" type="button">Guardar</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <label><input type="checkbox" id="enabled" /> Activar refresh automatico</label>
+        <div class="hint">Google ejecuta triggers con retrasos; no se puede fijar el minuto exacto.</div>
+        <div class="hint"><b>Requisito:</b> para automatizar, el login debe estar guardado (Remember my credentials).</div>
+
+        <label>Timezone</label>
+        <input id="timezone" placeholder="America/Asuncion" />
+        <div class="hint">Por defecto usamos la timezone de tu Spreadsheet.</div>
+
+        <label>Presets rapidos</label>
+        <div class="presetRow">
+          <button type="button" id="p_everyHour">Cada hora</button>
+          <button type="button" id="p_daily9">Diario 09:00</button>
+          <button type="button" id="p_weekdays9">Lun-Vie 09:00</button>
+          <button type="button" id="p_monthly1_9">Mensual (dia 1) 09:00</button>
+        </div>
+        <div class="hint">Estos botones solo rellenan los campos de abajo.</div>
+
+        <label>Horas (0-23)</label>
+        <input id="hours" placeholder="ej: 9,12,18" />
+        <div class="hint">Vacio = todas las horas.</div>
+
+        <label>Dias de semana (1=Lun ... 7=Dom)</label>
+        <input id="weekdays" placeholder="ej: 1,2,3,4,5" />
+        <div class="hint">Vacio = todos los dias.</div>
+
+        <label>Dias del mes (1-31)</label>
+        <input id="daysOfMonth" placeholder="ej: 1,15,30" />
+        <div class="hint">Vacio = todos los dias.</div>
+
+        <label>Meses (1-12)</label>
+        <input id="months" placeholder="ej: 1,2,3" />
+        <div class="hint">Vacio = todos los meses.</div>
+
+        <div id="msg"></div>
+      </div>
+    </div>
+
+    <script>
+      const INITIAL = JSON.parse("<?= initialJson ?>");
+      const $ = (id) => document.getElementById(id);
+
+      function setMsg(kind, text) {
+        const el = $("msg");
+        el.innerHTML = "";
+        if (!text) return;
+        const d = document.createElement("div");
+        d.className = "msg " + (kind === "ok" ? "ok" : "err");
+        d.textContent = text;
+        el.appendChild(d);
+      }
+
+      function parseCsvInts(s, min, max) {
+        const raw = String(s || "").trim();
+        if (!raw) return [];
+        const parts = raw.split(",").map((x) => x.trim()).filter(Boolean);
+        const out = [];
+        for (const p of parts) {
+          const n = Number(p);
+          if (!Number.isFinite(n) || n < min || n > max) throw new Error(`Valor invalido: ${p} (rango ${min}-${max})`);
+          out.push(Math.trunc(n));
+        }
+        // unique
+        return Array.from(new Set(out)).sort((a,b) => a-b);
+      }
+
+      function runServer(fnName, args, onOk, onErr) {
+        const g = window.google;
+        try {
+          const runner = g.script.run
+            .withSuccessHandler((res) => onOk && onOk(res))
+            .withFailureHandler((e) => onErr && onErr(e));
+          const arr = Array.isArray(args) ? args : args === undefined ? [] : [args];
+          const fn = runner && runner[fnName];
+          if (typeof fn !== "function") return onErr && onErr(new Error(`Missing server function: ${fnName}`));
+          fn.apply(runner, arr);
+        } catch (e) {
+          onErr && onErr(e);
+        }
+      }
+
+      function save() {
+        setMsg("", "");
+        const enabled = $("enabled").checked;
+        const tz = ($("timezone").value || "").trim() || INITIAL.defaultTimezone || "UTC";
+        let cfg = null;
+        try {
+          cfg = {
+            timezone: tz,
+            hours: parseCsvInts($("hours").value, 0, 23),
+            weekdays: parseCsvInts($("weekdays").value, 1, 7),
+            daysOfMonth: parseCsvInts($("daysOfMonth").value, 1, 31),
+            months: parseCsvInts($("months").value, 1, 12),
+          };
+        } catch (e) {
+          return setMsg("err", e && (e.message || String(e)));
+        }
+
+        $("btnSave").disabled = true;
+        runServer(
+          "api_setDatasourceSchedule",
+          [{ datasourceId: INITIAL.datasourceId, enabled, config: cfg }],
+          () => {
+            setMsg("ok", "Guardado.");
+            setTimeout(() => google.script.host.close(), 500);
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+            $("btnSave").disabled = false;
+          }
+        );
+      }
+
+      $("btnSave").addEventListener("click", save);
+      $("btnClose").addEventListener("click", () => google.script.host.close());
+
+      // Init
+      $("subtitle").textContent = `Conexion: ${INITIAL.connectionTitle} | Hoja: ${INITIAL.sheetName} | Modelo: ${INITIAL.model}`;
+      $("enabled").checked = Boolean(INITIAL.enabled);
+      $("timezone").value = (INITIAL.config && INITIAL.config.timezone) || INITIAL.defaultTimezone || "UTC";
+      $("hours").value = (INITIAL.config && INITIAL.config.hours && INITIAL.config.hours.join(",")) || "";
+      $("weekdays").value = (INITIAL.config && INITIAL.config.weekdays && INITIAL.config.weekdays.join(",")) || "";
+      $("daysOfMonth").value = (INITIAL.config && INITIAL.config.daysOfMonth && INITIAL.config.daysOfMonth.join(",")) || "";
+      $("months").value = (INITIAL.config && INITIAL.config.months && INITIAL.config.months.join(",")) || "";
+
+      // Presets
+      $("p_everyHour").addEventListener("click", () => {
+        $("hours").value = "";
+        $("weekdays").value = "";
+        $("daysOfMonth").value = "";
+        $("months").value = "";
+        $("enabled").checked = true;
+      });
+      $("p_daily9").addEventListener("click", () => {
+        $("hours").value = "9";
+        $("weekdays").value = "";
+        $("daysOfMonth").value = "";
+        $("months").value = "";
+        $("enabled").checked = true;
+      });
+      $("p_weekdays9").addEventListener("click", () => {
+        $("hours").value = "9";
+        $("weekdays").value = "1,2,3,4,5";
+        $("daysOfMonth").value = "";
+        $("months").value = "";
+        $("enabled").checked = true;
+      });
+      $("p_monthly1_9").addEventListener("click", () => {
+        $("hours").value = "9";
+        $("weekdays").value = "";
+        $("daysOfMonth").value = "1";
+        $("months").value = "";
+        $("enabled").checked = true;
+      });
+    </script>
+  </body>
+</html>

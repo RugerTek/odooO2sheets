@@ -7,8 +7,9 @@ import {
   touchUpdatedAt,
   upsertDatasource,
 } from "./storage";
-import { writeRows } from "./sheets";
-import { parseDomain } from "./util";
+import { writeTable } from "./sheets";
+import { baseFieldName, parseDomain, uniqStrings } from "./util";
+import { materializeValues } from "./materialize";
 
 export function refreshDatasourceById(
   datasourceId: string,
@@ -34,13 +35,14 @@ export function refreshDatasourceById(
     });
 
     const domain = parseDomain(ds.domain);
+    const baseFields = uniqStrings(ds.fields.map((f) => baseFieldName(f.fieldName)).filter(Boolean));
 
     const result = callKw<Record<string, unknown>[]>(session, {
       model: ds.odooModel,
       method: "search_read",
       args: [domain],
       kwargs: {
-        fields: ds.fields.map((f) => f.fieldName),
+        fields: baseFields,
         limit: ds.limit,
         order: ds.orderBy || undefined,
       },
@@ -52,7 +54,12 @@ export function refreshDatasourceById(
       throw new Error("Execution time limit exceeded. Add filters (domain) to reduce dataset size.");
     }
 
-    const rowsFetched = writeRows(ds, result);
+    const fields = [...ds.fields].sort((a, b) => a.order - b.order);
+    const headers = fields.map((f) => f.label || f.fieldName);
+    const fieldSpecs = fields.map((f) => f.fieldName);
+    const values = materializeValues({ session, baseModel: ds.odooModel, baseRows: result, fieldSpecs });
+
+    const rowsFetched = writeTable(ds, headers, values);
     ds.lastRun = {
       status: "OK",
       at: new Date().toISOString(),

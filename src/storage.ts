@@ -1,4 +1,4 @@
-import { AppStateDoc, Connection, Credential, Datasource } from "./types";
+import { AppStateDoc, Connection, Credential, Datasource, DatasourceField, DraftExtraction } from "./types";
 import { nowIso } from "./util";
 
 const DOC_KEY = "o2sheets:doc:v1";
@@ -6,6 +6,7 @@ const USER_CRED_PREFIX = "o2sheets:cred:user:v1:";
 const DOC_CRED_PREFIX = "o2sheets:cred:doc:v1:";
 const EPHEMERAL_CRED_PREFIX = "o2sheets:cred:tmp:v1:";
 const EPHEMERAL_TTL_SEC = 30 * 60;
+const USER_DRAFT_KEY = "o2sheets:draft:user:v1";
 
 function getActiveSpreadsheetId(): string {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -136,4 +137,37 @@ export function getEphemeralCredential(connectionId: string): { odooUsername: st
 export function touchUpdatedAt<T extends { updatedAt: string }>(obj: T): T {
   obj.updatedAt = nowIso();
   return obj;
+}
+
+export function getDraftExtraction(): DraftExtraction {
+  const props = PropertiesService.getUserProperties();
+  const raw = props.getProperty(USER_DRAFT_KEY);
+  if (!raw) return { updatedAt: "", fields: [] };
+  try {
+    const parsed = JSON.parse(raw) as DraftExtraction;
+    parsed.updatedAt ||= "";
+    parsed.fields ||= [];
+    return parsed;
+  } catch {
+    return { updatedAt: "", fields: [] };
+  }
+}
+
+export function setDraftExtraction(patch: Partial<DraftExtraction>): DraftExtraction {
+  const prev = getDraftExtraction();
+  const next: DraftExtraction = {
+    updatedAt: nowIso(),
+    connectionId: patch.connectionId ?? prev.connectionId,
+    model: patch.model ?? prev.model,
+    modelName: patch.modelName ?? prev.modelName,
+    fields: (patch.fields as DatasourceField[] | undefined) ?? prev.fields ?? [],
+  };
+  const props = PropertiesService.getUserProperties();
+  props.setProperty(USER_DRAFT_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function clearDraftExtraction(): void {
+  const props = PropertiesService.getUserProperties();
+  props.deleteProperty(USER_DRAFT_KEY);
 }

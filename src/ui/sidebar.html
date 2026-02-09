@@ -12,6 +12,7 @@
         --line: rgba(15, 23, 42, 0.12);
         --accent: #16a34a;
         --danger: #dc2626;
+        --info: #2563eb;
       }
       html, body {
         margin: 0;
@@ -74,12 +75,36 @@
       .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
       .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
       .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border: 1px solid var(--line); padding: 1px 6px; border-radius: 7px; background: rgba(15,23,42,0.02); }
+
+      .status {
+        display: none;
+        margin: 8px 0 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+      .status.show { display: block; }
+      .status.ok { border-color: rgba(22,163,74,0.35); }
+      .status.err { border-color: rgba(220,38,38,0.35); }
+      .status.info { border-color: rgba(37,99,235,0.35); }
+      .status .row { justify-content: space-between; }
+      .status .small { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+      .pills { display: flex; flex-wrap: wrap; gap: 6px; }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>Odoo O2Sheets</h1>
+      <h1>Odoo O2Sheets <span class="pill" id="uiBuild"></span></h1>
       <div class="hint" id="ctx"></div>
+      <div class="status" id="statusBar">
+        <div class="row">
+          <div class="title" id="statusText"></div>
+          <button id="btnClearStatus" type="button">Limpiar</button>
+        </div>
+        <div class="small" id="statusDetail"></div>
+      </div>
 
       <div class="card">
         <h2>Guia Rapida</h2>
@@ -115,8 +140,9 @@
         <select id="login_conn"></select>
         <label>Usuario Odoo</label>
         <input id="login_user" placeholder="ej: admin o tu-email@empresa.com" />
-        <label>Password Odoo</label>
-        <input id="login_pass" type="password" placeholder="password" />
+        <label>Password o API Key</label>
+        <input id="login_pass" type="password" placeholder="password o api key" />
+        <div class="hint">Si usas API Key de Odoo, pegala aqui como si fuera el password (recomendado).</div>
         <label><input type="checkbox" id="login_remember" /> Recordar credenciales (solo si queres scheduler)</label>
         <div class="row" style="margin-top: 8px;">
           <button class="primary" id="btnLogin">Probar login</button>
@@ -137,29 +163,23 @@
           </div>
         </div>
 
-        <h3>Modelo</h3>
-        <label>Modelo Odoo (tecnico)</label>
-        <input id="ds_model" placeholder="ej: res.partner" />
+        <h3>Tabla (modelo)</h3>
+        <input id="ds_model" type="hidden" />
         <div class="row" style="margin-top: 8px;">
-          <input id="model_query" class="col" placeholder="Buscar modelo (ej: partner, invoice, sale)" />
-          <button id="btnSearchModels">Buscar</button>
+          <div class="col">
+            <div class="title" id="chosenModelTitle">Sin tabla seleccionada</div>
+            <div class="meta" id="chosenModelMeta">Usa "Seleccionar tabla" para buscar por nombre.</div>
+          </div>
+          <button class="primary" id="btnOpenModelPicker">Seleccionar tabla</button>
         </div>
-        <div id="modelResults" class="list" style="margin-top: 8px;"></div>
 
-        <h3>Campos</h3>
+        <h3>Columnas</h3>
         <div class="row" style="margin-top: 8px;">
-          <button id="btnLoadFields">Cargar campos del modelo</button>
-          <div class="hint col">Luego marcarlos y reordenarlos abajo.</div>
+          <div class="hint col" id="chosenFieldsHint">0 columnas seleccionadas.</div>
+          <button class="primary" id="btnOpenColumnsPicker" disabled>Elegir columnas</button>
+          <button id="btnClearDraft" type="button">Limpiar</button>
         </div>
-        <div class="row" style="margin-top: 8px;">
-          <input id="field_query" class="col" placeholder="Filtrar campos (ej: name, email, phone)" />
-          <button id="btnClearFieldFilter">Limpiar</button>
-        </div>
-        <div id="fieldResults" class="list" style="margin-top: 8px; max-height: 180px; overflow: auto;"></div>
-
-        <h3>Columnas (seleccionadas)</h3>
-        <div class="hint">Aca podes cambiar el orden y el encabezado en la hoja.</div>
-        <div id="selectedFields" class="list" style="margin-top: 8px;"></div>
+        <div class="pills" id="chosenFieldsPills" style="margin-top: 8px;"></div>
 
         <div class="sep"></div>
         <div class="grid2">
@@ -200,13 +220,28 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
+      const UI_BUILD = "2026-02-09i";
 
-      let state = { context: null, connections: [], datasources: [] };
+      let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
-      let fieldMeta = {}; // fieldName -> meta
-      let allFields = [];
+      let chosenModel = { model: "", name: "" };
+
+      function setStatus(kind, text, detail) {
+        const bar = $("statusBar");
+        const txt = $("statusText");
+        const det = $("statusDetail");
+        if (!bar || !txt || !det) return;
+        const k = kind === "ok" || kind === "err" || kind === "info" ? kind : "info";
+        bar.className = `status show ${k}`;
+        txt.textContent = text ? String(text) : "";
+        det.textContent = detail ? String(detail) : "";
+      }
 
       function setMsg(el, kind, text) {
+        if (!el) {
+          if (text) setStatus(kind === "ok" ? "ok" : "err", text);
+          return;
+        }
         el.innerHTML = "";
         if (!text) return;
         const d = document.createElement("div");
@@ -224,18 +259,110 @@
           .replaceAll("'", "&#039;");
       }
 
+      function runServer(fnName, args, onOk, onErr, opts) {
+        const timeoutMs = (opts && opts.timeoutMs) || 45000;
+        const g = window.google;
+        if (!(g && g.script && g.script.run)) {
+          setStatus(
+            "err",
+            "No se encontro google.script.run (esto suele pasar si el sidebar no se abrio desde Google Sheets)."
+          );
+          return;
+        }
+
+        let done = false;
+        const t = setTimeout(() => {
+          if (done) return;
+          setStatus("err", "Timeout esperando respuesta del servidor.", `Funcion: ${fnName}`);
+        }, timeoutMs);
+
+        const success = (res) => {
+          done = true;
+          clearTimeout(t);
+          if (onOk) onOk(res);
+        };
+        const failure = (e) => {
+          done = true;
+          clearTimeout(t);
+          const msg = (e && (e.message || (e.toString && e.toString()))) || String(e || "Error");
+          if (onErr) onErr(e);
+          else setStatus("err", msg);
+        };
+
+        try {
+          const runner = g.script.run.withSuccessHandler(success).withFailureHandler(failure);
+          const arr = Array.isArray(args) ? args : args === undefined ? [] : [args];
+          const fn = runner && runner[fnName];
+          if (typeof fn !== "function") {
+            clearTimeout(t);
+            setStatus(
+              "err",
+              "Error ejecutando llamada al servidor.",
+              `La funcion "${fnName}" no existe. Probable version vieja del add-on. Recarga la planilla (F5), cierra y vuelve a abrir el sidebar. UI=${UI_BUILD}.`
+            );
+            return;
+          }
+          fn.apply(runner, arr);
+        } catch (e) {
+          clearTimeout(t);
+          setStatus("err", "Error ejecutando llamada al servidor.", e && (e.message || String(e)));
+        }
+      }
+
       function loadBootstrap() {
-        google.script.run
-          .withSuccessHandler((res) => {
+        setStatus("info", "Cargando estado...");
+        runServer(
+          "api_getBootstrap",
+          [],
+          (res) => {
             state = res;
             $("ctx").textContent = `Doc: ${res.context.spreadsheetId} | Usuario Google: ${res.context.userEmail}`;
             render();
             refreshSheets();
-          })
-          .withFailureHandler((e) => {
-            setMsg($("connMsg"), "err", e.message || String(e));
-          })
-          .api_getBootstrap();
+            if (res.draft) applyDraft(res.draft);
+            setStatus("ok", "Listo.");
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg($("connMsg"), "err", msg);
+            setStatus("err", "No se pudo cargar el estado.", msg);
+          }
+        );
+      }
+
+      function updateChosenModelUI() {
+        const model = ($("ds_model").value || "").trim();
+        const title = $("chosenModelTitle");
+        const meta = $("chosenModelMeta");
+        if (!model) {
+          title.textContent = "Sin tabla seleccionada";
+          meta.textContent = 'Usa "Seleccionar tabla" para buscar por nombre.';
+          $("btnOpenColumnsPicker").disabled = true;
+          return;
+        }
+        title.textContent = chosenModel.name ? chosenModel.name : model;
+        meta.textContent = `Modelo tecnico: ${model}`;
+        $("btnOpenColumnsPicker").disabled = false;
+      }
+
+      function updateChosenFieldsUI() {
+        const hint = $("chosenFieldsHint");
+        const pills = $("chosenFieldsPills");
+        const n = selectedFields.length;
+        hint.textContent = `${n} columna${n === 1 ? "" : "s"} seleccionada${n === 1 ? "" : "s"}.`;
+        pills.innerHTML = "";
+        selectedFields.slice(0, 10).forEach((f) => {
+          const p = document.createElement("span");
+          p.className = "pill";
+          p.textContent = f.fieldName;
+          pills.appendChild(p);
+        });
+        if (n > 10) {
+          const p = document.createElement("span");
+          p.className = "pill";
+          p.textContent = `+${n - 10} mas`;
+          pills.appendChild(p);
+        }
       }
 
       function render() {
@@ -294,23 +421,34 @@
             const it = document.createElement("div");
             it.className = "item";
             const last = ds.lastRun ? `${ds.lastRun.status} @ ${ds.lastRun.at} (${ds.lastRun.rows} filas)` : "nunca";
+            const auto = ds.schedulerEnabled ? "AUTO: ON" : "AUTO: OFF";
+            const autoMeta = ds.schedulerEnabled
+              ? `Timezone: ${(ds.schedulerConfig && ds.schedulerConfig.timezone) || "?"} | Horas: ${((ds.schedulerConfig && ds.schedulerConfig.hours) || []).join(",") || "todas"}`
+              : "Auto refresh desactivado.";
             it.innerHTML = `
               <div class="title">${escapeHtml(ds.sheetName)} <span class="pill">${escapeHtml(ds.odooModel)}</span></div>
               <div class="meta">Campos: ${escapeHtml(ds.fields.map((f) => f.fieldName).join(", "))}</div>
+              <div class="meta">${escapeHtml(auto)} | ${escapeHtml(autoMeta)}</div>
               <div class="meta">Ultima ejecucion: ${escapeHtml(last)}</div>
               <div class="row" style="margin-top:8px;">
                 <button class="primary" data-action="refresh" data-id="${ds.id}">Refresh</button>
+                <button data-action="schedule" data-id="${ds.id}">Timer</button>
               </div>
               <div id="ds_item_msg_${ds.id}"></div>
             `;
             dl.appendChild(it);
           });
         }
+
+        updateChosenModelUI();
+        updateChosenFieldsUI();
       }
 
       function refreshSheets() {
-        google.script.run
-          .withSuccessHandler((names) => {
+        runServer(
+          "api_listSheets",
+          [],
+          (names) => {
             const sel = $("ds_sheet");
             sel.innerHTML = "";
             names.forEach((n) => {
@@ -319,16 +457,16 @@
               o.textContent = n;
               sel.appendChild(o);
             });
-          })
-          .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
-          .api_listSheets();
+          },
+          (e) => setMsg($("dsMsg"), "err", (e && (e.message || String(e))) || "Error")
+        );
       }
 
       function suggestDbFromUrl() {
         const url = ($("c_url").value || "").trim();
         if (!url) return;
         try {
-          const u = new URL(url.replace(/\\/+$/, ""));
+          const u = new URL(url.replace(/\/+$/, ""));
           const host = u.hostname || "";
           if (host.endsWith(".odoo.com")) {
             const sub = host.split(".")[0];
@@ -340,22 +478,158 @@
       $("c_url").addEventListener("blur", suggestDbFromUrl);
 
       $("btnReload").addEventListener("click", loadBootstrap);
+      let draftUpdatedAt = "";
+
+      function applyDraft(draft) {
+        if (!draft) return;
+        draftUpdatedAt = draft.updatedAt || draftUpdatedAt;
+
+        if (draft.connectionId) {
+          try {
+            $("ds_conn").value = draft.connectionId;
+          } catch (_) {}
+        }
+
+        const model = (draft.model || "").trim();
+        if (model) {
+          $("ds_model").value = model;
+          chosenModel = { model, name: (draft.modelName || "").trim() || model };
+        }
+
+        selectedFields = (draft.fields || [])
+          .slice()
+          .sort((a, b) => (a.order || 0) - (b.order || 0))
+          .map((f) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, type: f.type || "" }));
+
+        updateChosenModelUI();
+        updateChosenFieldsUI();
+      }
+
+      function pollDraftChange(prevUpdatedAt, onChanged) {
+        const started = Date.now();
+        const tick = () => {
+          runServer(
+            "api_getDraftExtraction",
+            [],
+            (draft) => {
+              const cur = (draft && draft.updatedAt) || "";
+              if (cur && cur !== prevUpdatedAt) {
+                applyDraft(draft);
+                if (onChanged) onChanged(draft);
+                return;
+              }
+              if (Date.now() - started > 60 * 1000) {
+                setStatus("info", "No se detectaron cambios (si elegiste algo, toca Recargar).");
+                return;
+              }
+              setTimeout(tick, 700);
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude leer el draft.", msg);
+            }
+          );
+        };
+        tick();
+      }
+
+      $("btnOpenModelPicker").addEventListener("click", () => {
+        const connId = $("ds_conn").value || $("login_conn").value;
+        if (!connId) return setStatus("err", "Primero selecciona una conexion y hace login.");
+        const prev = draftUpdatedAt;
+        setStatus("info", "Abriendo selector de tabla...");
+        runServer(
+          "ui_openModelPickerDialog",
+          [connId],
+          () => {
+            pollDraftChange(prev, () => {
+              // After picking a table, open columns picker automatically (most intuitive flow).
+              const model = ($("ds_model").value || "").trim();
+              if (!model) return;
+              if (selectedFields.length) return setStatus("ok", "Tabla seleccionada.");
+              setStatus("info", "Tabla seleccionada. Abriendo selector de columnas...");
+              const prevCols = draftUpdatedAt;
+              setTimeout(() => {
+                runServer(
+                  "ui_openColumnsPickerDialog",
+                  [connId, model],
+                  () => pollDraftChange(prevCols, () => setStatus("ok", "Columnas actualizadas.")),
+                  (e) => {
+                    const msg = (e && (e.message || String(e))) || "Error";
+                    setStatus("err", "No pude abrir el selector de columnas.", msg);
+                  }
+                );
+              }, 250);
+            });
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setStatus("err", "No pude abrir el selector.", msg);
+          }
+        );
+      });
+
+      $("btnOpenColumnsPicker").addEventListener("click", () => {
+        const connId = $("ds_conn").value || $("login_conn").value;
+        if (!connId) return setStatus("err", "Primero selecciona una conexion y hace login.");
+        const model = ($("ds_model").value || "").trim();
+        if (!model) return setStatus("err", "Primero selecciona una tabla.");
+        const prev = draftUpdatedAt;
+        setStatus("info", "Abriendo selector de columnas...");
+        runServer(
+          "ui_openColumnsPickerDialog",
+          [connId, model],
+          () => {
+            pollDraftChange(prev, () => setStatus("ok", "Columnas actualizadas."));
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setStatus("err", "No pude abrir el selector.", msg);
+          }
+        );
+      });
+
+      $("btnClearDraft").addEventListener("click", () => {
+        setStatus("info", "Limpiando seleccion...");
+        runServer(
+          "api_clearDraftExtraction",
+          [],
+          () => {
+            draftUpdatedAt = "";
+            $("ds_model").value = "";
+            chosenModel = { model: "", name: "" };
+            selectedFields = [];
+            updateChosenModelUI();
+            updateChosenFieldsUI();
+            setStatus("ok", "Seleccion limpiada.");
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setStatus("err", "No se pudo limpiar.", msg);
+          }
+        );
+      });
 
       $("btnTestUrl").addEventListener("click", () => {
         setMsg($("connMsg"), "", "");
         const url = ($("c_url").value || "").trim();
-        if (!url) return setMsg($("connMsg"), "err", "Pegá la URL primero.");
+        if (!url) return setMsg($("connMsg"), "err", "Pega la URL primero.");
         $("btnTestUrl").disabled = true;
-        google.script.run
-          .withSuccessHandler(() => {
+        setStatus("info", "Probando URL...", url);
+        runServer(
+          "api_testOdooUrl",
+          [{ odooUrl: url }],
+          () => {
             setMsg($("connMsg"), "ok", "URL OK (es accesible).");
+            setStatus("ok", "URL OK.");
             $("btnTestUrl").disabled = false;
-          })
-          .withFailureHandler((e) => {
-            setMsg($("connMsg"), "err", e.message || String(e));
+          },
+          (e) => {
+            setMsg($("connMsg"), "err", (e && (e.message || String(e))) || "Error");
+            setStatus("err", "Fallo al probar URL.", e && (e.message || String(e)));
             $("btnTestUrl").disabled = false;
-          })
-          .api_testOdooUrl({ odooUrl: url });
+          }
+        );
       });
 
       $("btnCreateConn").addEventListener("click", () => {
@@ -365,9 +639,13 @@
         if (!url) return setMsg($("connMsg"), "err", "Falta la URL.");
         if (!db) return setMsg($("connMsg"), "err", "Falta el Database.");
         $("btnCreateConn").disabled = true;
-        google.script.run
-          .withSuccessHandler((conn) => {
+        setStatus("info", "Guardando conexion...", `${url} | DB: ${db}`);
+        runServer(
+          "api_createConnection",
+          [{ odooUrl: url, odooDb: db, storeConnections: false, shareCredentials: false }],
+          (conn) => {
             setMsg($("connMsg"), "ok", "Conexion guardada. Ahora hace login.");
+            setStatus("ok", "Conexion guardada.");
             loadBootstrap();
             setTimeout(() => {
               try {
@@ -376,12 +654,13 @@
               } catch (_) {}
             }, 200);
             $("btnCreateConn").disabled = false;
-          })
-          .withFailureHandler((e) => {
-            setMsg($("connMsg"), "err", e.message || String(e));
+          },
+          (e) => {
+            setMsg($("connMsg"), "err", (e && (e.message || String(e))) || "Error");
+            setStatus("err", "No se pudo guardar la conexion.", e && (e.message || String(e)));
             $("btnCreateConn").disabled = false;
-          })
-          .api_createConnection({ odooUrl: url, odooDb: db, storeConnections: false, shareCredentials: false });
+          }
+        );
       });
 
       $("btnLogin").addEventListener("click", () => {
@@ -389,152 +668,29 @@
         const connId = $("login_conn").value;
         if (!connId) return setMsg($("loginMsg"), "err", "Selecciona una conexion.");
         $("btnLogin").disabled = true;
-        google.script.run
-          .withSuccessHandler((res) => {
+        setStatus("info", "Probando login...");
+        runServer(
+          "api_setCredential",
+          [
+            {
+              connectionId: connId,
+              odooUsername: $("login_user").value,
+              odooPassword: $("login_pass").value,
+              remember: $("login_remember").checked,
+            },
+          ],
+          (res) => {
             setMsg($("loginMsg"), "ok", `Login OK (uid=${res.uid}).`);
+            setStatus("ok", "Login OK.");
             $("btnLogin").disabled = false;
             loadBootstrap();
-          })
-          .withFailureHandler((e) => {
-            setMsg($("loginMsg"), "err", e.message || String(e));
+          },
+          (e) => {
+            setMsg($("loginMsg"), "err", (e && (e.message || String(e))) || "Error");
+            setStatus("err", "Login fallo.", e && (e.message || String(e)));
             $("btnLogin").disabled = false;
-          })
-          .api_setCredential({
-            connectionId: connId,
-            odooUsername: $("login_user").value,
-            odooPassword: $("login_pass").value,
-            remember: $("login_remember").checked,
-          });
-      });
-
-      function renderModelResults(items) {
-        const root = $("modelResults");
-        root.innerHTML = "";
-        if (!items || items.length === 0) {
-          const d = document.createElement("div");
-          d.className = "hint";
-          d.textContent = "Sin resultados.";
-          root.appendChild(d);
-          return;
-        }
-        items.forEach((m) => {
-          const it = document.createElement("div");
-          it.className = "item";
-          it.innerHTML = `
-            <div class="title">${escapeHtml(m.model)} <span class="pill">${escapeHtml(m.name || "")}</span></div>
-            <div class="row" style="margin-top:8px;">
-              <button class="primary" data-action="pickModel" data-model="${escapeHtml(m.model)}">Usar este modelo</button>
-            </div>
-          `;
-          root.appendChild(it);
-        });
-      }
-
-      $("btnSearchModels").addEventListener("click", () => {
-        setMsg($("dsMsg"), "", "");
-        const connId = $("ds_conn").value || $("login_conn").value;
-        if (!connId) return setMsg($("dsMsg"), "err", "Selecciona conexion y hace login.");
-        const q = ($("model_query").value || "").trim();
-        if (!q) return setMsg($("dsMsg"), "err", "Escribi algo para buscar el modelo.");
-        $("modelResults").innerHTML = `<div class="hint">Buscando...</div>`;
-        google.script.run
-          .withSuccessHandler((items) => renderModelResults(items))
-          .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
-          .api_searchModels({ connectionId: connId, query: q, limit: 20 });
-      });
-
-      function renderFieldResults(fields) {
-        const root = $("fieldResults");
-        root.innerHTML = "";
-        if (!fields || fields.length === 0) {
-          const d = document.createElement("div");
-          d.className = "hint";
-          d.textContent = "No pude cargar campos (revisa login y modelo).";
-          root.appendChild(d);
-          return;
-        }
-        allFields = fields;
-        fieldMeta = {};
-        fields.forEach((f) => (fieldMeta[f.fieldName] = f));
-
-        const q = ($("field_query").value || "").trim().toLowerCase();
-        const filtered = q
-          ? fields.filter((f) => String(f.fieldName).toLowerCase().includes(q) || String(f.label).toLowerCase().includes(q))
-          : fields;
-
-        const current = new Set(selectedFields.map((x) => x.fieldName));
-
-        filtered.forEach((f) => {
-          const it = document.createElement("div");
-          it.className = "item";
-          const checked = current.has(f.fieldName) ? "checked" : "";
-          it.innerHTML = `
-            <label style="margin:0;">
-              <input type="checkbox" data-action="toggleField" data-field="${escapeHtml(f.fieldName)}" ${checked} />
-              <span class="title">${escapeHtml(f.fieldName)}</span>
-              <span class="pill">${escapeHtml(f.type)}</span>
-            </label>
-            <div class="meta">${escapeHtml(f.label || "")}</div>
-          `;
-          root.appendChild(it);
-        });
-      }
-
-      function renderSelectedFields() {
-        const root = $("selectedFields");
-        root.innerHTML = "";
-        if (!selectedFields.length) {
-          const d = document.createElement("div");
-          d.className = "hint";
-          d.textContent = "Selecciona campos arriba (checkbox).";
-          root.appendChild(d);
-          return;
-        }
-        selectedFields.forEach((f, idx) => {
-          const it = document.createElement("div");
-          it.className = "item";
-          it.innerHTML = `
-            <div class="row">
-              <div class="col">
-                <div class="title">${escapeHtml(f.fieldName)}</div>
-                <label>Encabezado</label>
-                <input data-action="setLabel" data-idx="${idx}" value="${escapeHtml(f.label || f.fieldName)}" />
-              </div>
-              <div class="row">
-                <button data-action="moveFieldUp" data-idx="${idx}">Up</button>
-                <button data-action="moveFieldDown" data-idx="${idx}">Down</button>
-                <button class="danger" data-action="removeField" data-idx="${idx}">Remove</button>
-              </div>
-            </div>
-          `;
-          root.appendChild(it);
-        });
-      }
-
-      $("btnLoadFields").addEventListener("click", () => {
-        setMsg($("dsMsg"), "", "");
-        const connId = $("ds_conn").value || $("login_conn").value;
-        const model = ($("ds_model").value || "").trim();
-        if (!connId) return setMsg($("dsMsg"), "err", "Selecciona conexion y hace login.");
-        if (!model) return setMsg($("dsMsg"), "err", "Primero selecciona un modelo.");
-        $("fieldResults").innerHTML = `<div class="hint">Cargando campos...</div>`;
-        google.script.run
-          .withSuccessHandler((items) => {
-            // reset selections only if model changed
-            selectedFields = [];
-            renderFieldResults(items);
-            renderSelectedFields();
-          })
-          .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
-          .api_getModelFields({ connectionId: connId, model });
-      });
-
-      $("field_query").addEventListener("input", () => {
-        if (allFields.length) renderFieldResults(allFields);
-      });
-      $("btnClearFieldFilter").addEventListener("click", () => {
-        $("field_query").value = "";
-        if (allFields.length) renderFieldResults(allFields);
+          }
+        );
       });
 
       $("btnCreateDs").addEventListener("click", () => {
@@ -544,78 +700,63 @@
         const model = ($("ds_model").value || "").trim();
         if (!connId) return setMsg($("dsMsg"), "err", "Selecciona conexion.");
         if (!sheet) return setMsg($("dsMsg"), "err", "Selecciona hoja.");
-        if (!model) return setMsg($("dsMsg"), "err", "Selecciona modelo.");
-        if (!selectedFields.length) return setMsg($("dsMsg"), "err", "Selecciona al menos 1 campo.");
+        if (!model) return setMsg($("dsMsg"), "err", "Selecciona una tabla (modelo).");
+        if (!selectedFields.length) return setMsg($("dsMsg"), "err", "Elige al menos 1 columna.");
 
         const fieldArr = selectedFields.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }));
         $("btnCreateDs").disabled = true;
-        google.script.run
-          .withSuccessHandler((ds) => {
+        setStatus("info", "Guardando extraccion...", `${sheet} | ${model}`);
+        runServer(
+          "api_createDatasource",
+          [
+            {
+              sheetName: sheet,
+              connectionId: connId,
+              odooModel: model,
+              fields: fieldArr,
+              limit: Number($("ds_limit").value || 80),
+              domain: $("ds_domain").value,
+              orderBy: $("ds_order").value,
+              writeMode: $("ds_mode").value,
+              header: $("ds_header").checked,
+            },
+          ],
+          () => {
             setMsg($("dsMsg"), "ok", "Extraccion guardada. Ahora podes apretar Refresh en la lista de abajo.");
+            setStatus("ok", "Extraccion guardada.");
             $("btnCreateDs").disabled = false;
             loadBootstrap();
-          })
-          .withFailureHandler((e) => {
-            setMsg($("dsMsg"), "err", e.message || String(e));
+          },
+          (e) => {
+            setMsg($("dsMsg"), "err", (e && (e.message || String(e))) || "Error");
+            setStatus("err", "No se pudo guardar la extraccion.", e && (e.message || String(e)));
             $("btnCreateDs").disabled = false;
-          })
-          .api_createDatasource({
-            sheetName: sheet,
-            connectionId: connId,
-            odooModel: model,
-            fields: fieldArr,
-            limit: Number($("ds_limit").value || 80),
-            domain: $("ds_domain").value,
-            orderBy: $("ds_order").value,
-            writeMode: $("ds_mode").value,
-            header: $("ds_header").checked,
-          });
+          }
+        );
       });
 
       document.body.addEventListener("click", (ev) => {
         const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
-        const cb = ev.target && ev.target.closest && ev.target.closest("input[type=checkbox][data-action]");
-        const action = btn ? btn.getAttribute("data-action") : cb ? cb.getAttribute("data-action") : null;
+        const action = btn ? btn.getAttribute("data-action") : null;
         if (!action) return;
 
-        if (action === "pickModel") {
-          const model = btn.getAttribute("data-model");
-          $("ds_model").value = model;
-          $("modelResults").innerHTML = "";
-          // Auto-load fields.
-          $("btnLoadFields").click();
-          return;
-        }
-
-        if (action === "toggleField") {
-          const field = cb.getAttribute("data-field");
-          if (cb.checked) {
-            if (!selectedFields.some((x) => x.fieldName === field)) {
-              const meta = fieldMeta[field] || {};
-              selectedFields.push({ fieldName: field, label: meta.label || field, type: meta.type || "" });
+        if (action === "schedule") {
+          const id = btn.getAttribute("data-id");
+          setStatus("info", "Abriendo timer...", `Datasource: ${id}`);
+          runServer(
+            "ui_openScheduleDialog",
+            [id],
+            () => {
+              // Best effort refresh after user closes dialog (we can't reliably detect close).
+              setTimeout(loadBootstrap, 1200);
+              setTimeout(loadBootstrap, 3000);
+              setStatus("ok", "Timer abierto. Cuando guardes, se actualiza la lista.");
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude abrir el timer.", msg);
             }
-          } else {
-            selectedFields = selectedFields.filter((x) => x.fieldName !== field);
-          }
-          renderSelectedFields();
-          return;
-        }
-
-        if (action === "moveFieldUp" || action === "moveFieldDown" || action === "removeField") {
-          const idx = Number(btn.getAttribute("data-idx"));
-          if (!Number.isFinite(idx) || !selectedFields[idx]) return;
-          if (action === "removeField") selectedFields.splice(idx, 1);
-          if (action === "moveFieldUp" && idx > 0) {
-            const t = selectedFields[idx - 1];
-            selectedFields[idx - 1] = selectedFields[idx];
-            selectedFields[idx] = t;
-          }
-          if (action === "moveFieldDown" && idx < selectedFields.length - 1) {
-            const t = selectedFields[idx + 1];
-            selectedFields[idx + 1] = selectedFields[idx];
-            selectedFields[idx] = t;
-          }
-          renderSelectedFields();
+          );
           return;
         }
 
@@ -624,32 +765,49 @@
           const msgEl = $("ds_item_msg_" + id);
           setMsg(msgEl, "", "");
           btn.disabled = true;
-          google.script.run
-            .withSuccessHandler((res) => {
+          setStatus("info", "Refrescando...", `Datasource: ${id}`);
+          runServer(
+            "api_refreshDatasource",
+            [id, { automated: false }],
+            (res) => {
               setMsg(msgEl, "ok", `OK: ${res.rowsFetched} filas`);
+              setStatus("ok", `Refresco OK: ${res.rowsFetched} filas.`);
               btn.disabled = false;
               loadBootstrap();
-            })
-            .withFailureHandler((e) => {
-              setMsg(msgEl, "err", e.message || String(e));
+            },
+            (e) => {
+              setMsg(msgEl, "err", (e && (e.message || String(e))) || "Error");
+              setStatus("err", "Fallo el refresco.", e && (e.message || String(e)));
               btn.disabled = false;
-            })
-            .api_refreshDatasource(id, { automated: false });
+            },
+            { timeoutMs: 120000 }
+          );
         }
       });
 
-      document.body.addEventListener("input", (ev) => {
-        const inp = ev.target && ev.target.closest && ev.target.closest("input[data-action]");
-        if (!inp) return;
-        const action = inp.getAttribute("data-action");
-        if (action !== "setLabel") return;
-        const idx = Number(inp.getAttribute("data-idx"));
-        if (!Number.isFinite(idx) || !selectedFields[idx]) return;
-        selectedFields[idx].label = inp.value;
+      $("btnClearStatus").addEventListener("click", () => {
+        const bar = $("statusBar");
+        if (!bar) return;
+        bar.className = "status";
+        $("statusText").textContent = "";
+        $("statusDetail").textContent = "";
       });
+
+      window.addEventListener("error", (ev) => {
+        const msg = (ev && ev.message) || "Error de JavaScript en la interfaz.";
+        const where = ev && ev.filename ? `${ev.filename}:${ev.lineno || ""}` : "";
+        setStatus("err", msg, where);
+      });
+      window.addEventListener("unhandledrejection", (ev) => {
+        const reason = (ev && ev.reason && (ev.reason.message || String(ev.reason))) || "Promise rechazada.";
+        setStatus("err", "Error en la interfaz.", reason);
+      });
+
+      try {
+        $("uiBuild").textContent = UI_BUILD;
+      } catch (_) {}
 
       loadBootstrap();
     </script>
   </body>
 </html>
-

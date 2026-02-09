@@ -3,9 +3,12 @@ import {
   getCredential,
   getCurrentContext,
   getDatasource,
+  getDraftExtraction,
   getEphemeralCredential,
   listConnections,
   listDatasources,
+  setDraftExtraction,
+  clearDraftExtraction,
   saveCredential,
   saveEphemeralCredential,
   touchUpdatedAt,
@@ -13,21 +16,71 @@ import {
   upsertDatasource,
 } from "./storage";
 import { authenticate, canUseAdvanced, callKw, getVersionInfo, OdooSession } from "./odoo";
-import { Connection, Credential, Datasource, DatasourceField, SchedulerConfig } from "./types";
-import { normalizeConnectionName, normalizeOdooUrl, nowIso, parseDomain, uuidV4 } from "./util";
+import { Connection, Credential, Datasource, DatasourceField, DraftExtraction, SchedulerConfig } from "./types";
+import { baseFieldName, normalizeConnectionName, normalizeOdooUrl, nowIso, parseDomain, uniqStrings, uuidV4 } from "./util";
 import { ensureSchedulerTrigger } from "./scheduler";
 import { refreshDatasourceById } from "./refresh";
+import { materializeValues } from "./materialize";
 
 export function api_getBootstrap(): {
   context: { spreadsheetId: string; userEmail: string };
   connections: Connection[];
   datasources: Datasource[];
+  draft: DraftExtraction;
 } {
   return {
     context: getCurrentContext(),
     connections: listConnections(),
     datasources: listDatasources(),
+    draft: getDraftExtraction(),
   };
+}
+
+export function api_getDraftExtraction(): DraftExtraction {
+  return getDraftExtraction();
+}
+
+export function api_setDraftModel(input: {
+  connectionId: string;
+  model: string;
+  modelName?: string;
+}): DraftExtraction {
+  const model = input.model.trim();
+  if (!model) throw new Error("Model is required.");
+  return setDraftExtraction({
+    connectionId: input.connectionId,
+    model,
+    modelName: (input.modelName || "").trim() || model,
+    fields: [],
+  });
+}
+
+export function api_setDraftFields(input: {
+  connectionId: string;
+  model: string;
+  fields: Array<{ fieldName: string; label?: string; order: number; type?: string }>;
+}): DraftExtraction {
+  const model = input.model.trim();
+  if (!model) throw new Error("Model is required.");
+  const fields = (input.fields || [])
+    .filter((f) => f && f.fieldName)
+    .map((f) => ({
+      fieldName: String(f.fieldName),
+      label: (f.label && String(f.label)) || String(f.fieldName),
+      order: Number.isFinite(f.order as any) ? Number(f.order) : 0,
+      type: f.type ? String(f.type) : undefined,
+    }))
+    .sort((a, b) => a.order - b.order);
+  return setDraftExtraction({
+    connectionId: input.connectionId,
+    model,
+    fields,
+  });
+}
+
+export function api_clearDraftExtraction(): { ok: true } {
+  clearDraftExtraction();
+  return { ok: true };
 }
 
 export function api_testOdooUrl(input: { odooUrl: string }): any {
@@ -167,16 +220,21 @@ function getSessionForConnection(connectionId: string): OdooSession {
 export function api_searchModels(input: {
   connectionId: string;
   query: string;
+  module?: string;
   limit?: number;
 }): Array<{ model: string; name: string; modules?: string }> {
   const session = getSessionForConnection(input.connectionId);
-  const q = input.query.trim();
-  if (!q) return [];
+  const q = (input.query || "").trim();
+  const mod = (input.module || "").trim();
+  if (!q && !mod) return [];
 
   const limit = Math.max(1, Math.min(50, Number(input.limit) || 20));
 
   // Use ir.model to search by technical model or display name.
-  const domain: any[] = ["|", ["model", "ilike", q], ["name", "ilike", q]];
+  let domain: any[] = [];
+  if (q && mod) domain = ["&", ["modules", "ilike", mod], "|", ["model", "ilike", q], ["name", "ilike", q]];
+  else if (mod) domain = [["modules", "ilike", mod]];
+  else domain = ["|", ["model", "ilike", q], ["name", "ilike", q]];
   const rows = callKw<Array<{ model: string; name: string; modules?: string }>>(session, {
     model: "ir.model",
     method: "search_read",
@@ -186,6 +244,27 @@ export function api_searchModels(input: {
   return rows
     .filter((r) => r && typeof r.model === "string")
     .map((r) => ({ model: r.model, name: r.name || r.model, modules: (r as any).modules }));
+}
+
+export function api_listModules(input: { connectionId: string; limit?: number }): Array<{ name: string; title: string; category?: string }> {
+  const session = getSessionForConnection(input.connectionId);
+  const limit = Math.max(1, Math.min(120, Number(input.limit) || 80));
+
+  const rows = callKw<Array<{ name: string; shortdesc?: string; category_id?: any }>>(session, {
+    model: "ir.module.module",
+    method: "search_read",
+    args: [[["state", "=", "installed"]]],
+    kwargs: { fields: ["name", "shortdesc", "category_id"], limit, order: "shortdesc asc" },
+  });
+
+  const out = rows
+    .filter((r) => r && typeof r.name === "string")
+    .map((r) => ({
+      name: r.name,
+      title: (r as any).shortdesc || r.name,
+      category: Array.isArray((r as any).category_id) ? String((r as any).category_id[1] || "") : undefined,
+    }));
+  return out;
 }
 
 export function api_getModelFields(input: {
@@ -217,6 +296,40 @@ export function api_getModelFields(input: {
   }
   out.sort((a, b) => a.fieldName.localeCompare(b.fieldName));
   return out;
+}
+
+export function api_previewRows(input: {
+  connectionId: string;
+  model: string;
+  fields: string[];
+  domain?: string;
+  orderBy?: string;
+  limit?: number;
+}): { fields: string[]; rows: Array<Array<string | number | boolean | null>> } {
+  const session = getSessionForConnection(input.connectionId);
+  const model = input.model.trim();
+  if (!model) throw new Error("Model is required.");
+  const fields = (input.fields || []).map((f) => String(f || "").trim()).filter(Boolean);
+  if (fields.length === 0) throw new Error("At least one field is required for preview.");
+
+  const domain = parseDomain(input.domain);
+  const limit = Math.max(1, Math.min(20, Number(input.limit) || 5));
+  const safeSpecs = fields.slice(0, 12);
+  const baseFields = uniqStrings(safeSpecs.map((f) => baseFieldName(f)).filter(Boolean));
+
+  const result = callKw<Record<string, unknown>[]>(session, {
+    model,
+    method: "search_read",
+    args: [domain],
+    kwargs: {
+      fields: baseFields,
+      limit,
+      order: input.orderBy?.trim() || undefined,
+    },
+  });
+
+  const values = materializeValues({ session, baseModel: model, baseRows: result, fieldSpecs: safeSpecs });
+  return { fields: safeSpecs, rows: values };
 }
 
 export function api_listSheets(): string[] {

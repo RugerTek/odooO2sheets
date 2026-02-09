@@ -75,3 +75,10 @@ export interface AppStateDoc {
   version: 1;
 }
 
+export interface DraftExtraction {
+  updatedAt: string; // ISO
+  connectionId?: ConnectionId;
+  model?: string;
+  modelName?: string;
+  fields?: DatasourceField[];
+}

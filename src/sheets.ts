@@ -1,5 +1,4 @@
 import { Datasource } from "./types";
-import { truncateCell } from "./util";
 
 export function ensureSheet(sheetName: string): GoogleAppsScript.Spreadsheet.Sheet {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -9,16 +8,12 @@ export function ensureSheet(sheetName: string): GoogleAppsScript.Spreadsheet.She
   return ss.insertSheet(sheetName);
 }
 
-export function writeRows(ds: Datasource, rows: Record<string, unknown>[]): number {
+export function writeTable(
+  ds: Datasource,
+  headers: string[],
+  values: Array<Array<string | number | boolean | null>>
+): number {
   const sheet = ensureSheet(ds.sheetName);
-
-  const fields = [...ds.fields].sort((a, b) => a.order - b.order);
-  const headers = fields.map((f) => f.label || f.fieldName);
-  const fieldNames = fields.map((f) => f.fieldName);
-
-  const values: Array<Array<string | number | boolean | null>> = rows.map((r) =>
-    fieldNames.map((name) => truncateCell((r as any)[name]) as any)
-  );
 
   const startRow = ds.writeMode === "APPEND" ? sheet.getLastRow() + 1 : 1;
 
@@ -37,4 +32,3 @@ export function writeRows(ds: Datasource, rows: Record<string, unknown>[]): numb
 
   return values.length;
 }
-

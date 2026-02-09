@@ -4,18 +4,42 @@ import { refreshDatasourceById } from "./refresh";
 const TRIGGER_HANDLER = "runSchedulerTick_";
 
 export function ensureSchedulerTrigger(): void {
-  const triggers = ScriptApp.getProjectTriggers();
+  let triggers: GoogleAppsScript.Script.Trigger[] = [];
+  try {
+    triggers = ScriptApp.getProjectTriggers();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Common: missing script.scriptapp scope until the user re-authorizes after a manifest update.
+    if (msg.includes("Specified permissions are not sufficient") || msg.includes("script.scriptapp")) {
+      throw new Error(
+        "No tengo permisos para gestionar triggers (timer). " +
+          "Solucion: en el editor de Apps Script, ejecuta una funcion (por ejemplo showSidebar) y acepta los permisos. " +
+          "Luego volve a activar el timer."
+      );
+    }
+    throw new Error(`Error leyendo triggers del proyecto: ${msg}`);
+  }
+
   const exists = triggers.some((t) => t.getHandlerFunction() === TRIGGER_HANDLER);
   if (exists) return;
-  // Hourly trigger; internally we check per-datasource schedule.
-  ScriptApp.newTrigger(TRIGGER_HANDLER).timeBased().everyHours(1).create();
+
+  try {
+    // Hourly trigger; internally we check per-datasource schedule.
+    ScriptApp.newTrigger(TRIGGER_HANDLER).timeBased().everyHours(1).create();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`No pude crear el trigger (timer). Detalle: ${msg}`);
+  }
 }
 
-function weekdayMon1Sun7(d: Date): number {
-  // JS getDay: 0=Sun..6=Sat. We want 1=Mon..7=Sun
-  const js = d.getDay();
-  if (js === 0) return 7;
-  return js;
+function nowPartsInTz(now: Date, timezone: string): { hour: number; day: number; month: number; wday: number } {
+  // Use Apps Script / Java date formatting to compute time in the desired timezone.
+  // u: day number 1..7 (Mon..Sun)
+  const hour = Number(Utilities.formatDate(now, timezone, "H"));
+  const day = Number(Utilities.formatDate(now, timezone, "d"));
+  const month = Number(Utilities.formatDate(now, timezone, "M"));
+  const wday = Number(Utilities.formatDate(now, timezone, "u"));
+  return { hour, day, month, wday };
 }
 
 function shouldRunNow(ds: any, now: Date): boolean {
@@ -23,10 +47,8 @@ function shouldRunNow(ds: any, now: Date): boolean {
   const cfg = ds.schedulerConfig;
   if (!cfg) return false;
 
-  const hour = now.getHours();
-  const day = now.getDate();
-  const month = now.getMonth() + 1;
-  const wday = weekdayMon1Sun7(now);
+  const tz = String(cfg.timezone || Session.getScriptTimeZone() || "UTC");
+  const { hour, day, month, wday } = nowPartsInTz(now, tz);
 
   if (Array.isArray(cfg.hours) && cfg.hours.length > 0 && !cfg.hours.includes(hour)) return false;
   if (Array.isArray(cfg.daysOfMonth) && cfg.daysOfMonth.length > 0 && !cfg.daysOfMonth.includes(day)) return false;

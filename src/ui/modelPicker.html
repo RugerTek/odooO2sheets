@@ -1,0 +1,259 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --muted: #475569;
+        --text: #0f172a;
+        --line: rgba(15, 23, 42, 0.12);
+        --accent: #16a34a;
+        --danger: #dc2626;
+      }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+      .wrap { padding: 14px; }
+      .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      h1 { font-size: 16px; margin: 0; }
+      .muted { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .col { flex: 1; }
+      .grid2 { display: grid; grid-template-columns: 260px 1fr; gap: 12px; align-items: start; margin-top: 12px; }
+      .panel { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: rgba(15,23,42,0.01); }
+      .panelTitle { font-weight: 700; margin: 0 0 8px; }
+      .scroll { max-height: 460px; overflow: auto; padding-right: 4px; }
+      input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid rgba(15, 23, 42, 0.18); border-radius: 10px; }
+      button { border: 1px solid rgba(15, 23, 42, 0.14); background: rgba(15, 23, 42, 0.04); color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+      button.primary { border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.10); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .msg { margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(15,23,42,0.02); }
+      .msg.ok { border-color: rgba(22,163,74,0.35); }
+      .msg.err { border-color: rgba(220,38,38,0.35); }
+      .list { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+      .item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,0.02); }
+      .title { font-weight: 700; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+      .appItem { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+      .appItem.active { border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.08); }
+      .appName { font-weight: 600; }
+      .appCat { color: var(--muted); font-size: 11px; margin-top: 1px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Seleccionar tabla</h1>
+          <div class="muted" id="subtitle"></div>
+        </div>
+        <div class="row">
+          <button id="btnClose" type="button">Cerrar</button>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="panel">
+          <div class="panelTitle">Apps</div>
+          <div class="muted">Filtra por modulo instalado.</div>
+          <div class="scroll" style="margin-top:10px;">
+            <div id="apps"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panelTitle">Tablas</div>
+          <div class="row" style="margin-top: 10px;">
+            <input id="q" class="col" placeholder="Buscar (ej: partner, invoice, sale, product, account)" />
+            <button class="primary" id="btnSearch" type="button">Buscar</button>
+          </div>
+          <div id="msg"></div>
+          <div class="list" id="results"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const INITIAL = JSON.parse("<?= initialJson ?>");
+      const $ = (id) => document.getElementById(id);
+      let currentModule = "";
+      let modules = [];
+      let searchTimer = null;
+
+      function setMsg(kind, text) {
+        const el = $("msg");
+        el.innerHTML = "";
+        if (!text) return;
+        const d = document.createElement("div");
+        d.className = "msg " + (kind === "ok" ? "ok" : "err");
+        d.textContent = text;
+        el.appendChild(d);
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function runServer(fnName, args, onOk, onErr) {
+        const g = window.google;
+        try {
+          const runner = g.script.run
+            .withSuccessHandler((res) => onOk && onOk(res))
+            .withFailureHandler((e) => onErr && onErr(e));
+          const arr = Array.isArray(args) ? args : args === undefined ? [] : [args];
+          const fn = runner && runner[fnName];
+          if (typeof fn !== "function") return onErr && onErr(new Error(`Missing server function: ${fnName}`));
+          fn.apply(runner, arr);
+        } catch (e) {
+          onErr && onErr(e);
+        }
+      }
+
+      function renderApps() {
+        const root = $("apps");
+        root.innerHTML = "";
+
+        const all = document.createElement("div");
+        all.className = "appItem" + (!currentModule ? " active" : "");
+        all.setAttribute("data-action", "pickModule");
+        all.setAttribute("data-module", "");
+        all.innerHTML = `<div><div class="appName">Todas</div><div class="appCat">sin filtro</div></div><span class="pill">All</span>`;
+        root.appendChild(all);
+
+        if (!modules.length) {
+          const d = document.createElement("div");
+          d.className = "muted";
+          d.style.marginTop = "10px";
+          d.textContent = "Cargando modulos...";
+          root.appendChild(d);
+          return;
+        }
+
+        modules.forEach((m) => {
+          const it = document.createElement("div");
+          it.className = "appItem" + (currentModule === m.name ? " active" : "");
+          it.setAttribute("data-action", "pickModule");
+          it.setAttribute("data-module", m.name);
+          it.innerHTML = `
+            <div>
+              <div class="appName">${escapeHtml(m.title || m.name)}</div>
+              <div class="appCat">${escapeHtml(m.category || "")}</div>
+            </div>
+            <span class="pill">${escapeHtml(m.name)}</span>
+          `;
+          root.appendChild(it);
+        });
+      }
+
+      function render(items) {
+        const root = $("results");
+        root.innerHTML = "";
+        if (!items || items.length === 0) {
+          const d = document.createElement("div");
+          d.className = "muted";
+          d.textContent = "Sin resultados.";
+          root.appendChild(d);
+          return;
+        }
+        items.forEach((m) => {
+          const it = document.createElement("div");
+          it.className = "item";
+          it.innerHTML = `
+            <div class="title">${escapeHtml(m.name || m.model)} <span class="pill">${escapeHtml(m.model)}</span></div>
+            <div class="row" style="margin-top:10px;">
+              <button class="primary" data-action="pick" data-model="${escapeHtml(m.model)}" data-name="${escapeHtml(m.name || "")}">Seleccionar</button>
+            </div>
+          `;
+          root.appendChild(it);
+        });
+      }
+
+      function doSearch() {
+        setMsg("", "");
+        const q = ($("q").value || "").trim();
+        $("btnSearch").disabled = true;
+        $("results").innerHTML = "<div class='muted'>Buscando...</div>";
+        runServer(
+          "api_searchModels",
+          [{ connectionId: INITIAL.connectionId, query: q, module: currentModule, limit: 60 }],
+          (items) => {
+            render(items);
+            $("btnSearch").disabled = false;
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+            $("results").innerHTML = "";
+            $("btnSearch").disabled = false;
+          }
+        );
+      }
+
+      document.body.addEventListener("click", (ev) => {
+        const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
+        const app = ev.target && ev.target.closest && ev.target.closest("div[data-action='pickModule']");
+        if (app) {
+          currentModule = (app.getAttribute("data-module") || "").trim();
+          renderApps();
+          doSearch();
+          return;
+        }
+        if (!btn) return;
+        const action = btn.getAttribute("data-action");
+        if (action !== "pick") return;
+        const model = (btn.getAttribute("data-model") || "").trim();
+        const name = (btn.getAttribute("data-name") || "").trim();
+        if (!model) return;
+        btn.disabled = true;
+        runServer(
+          "api_setDraftModel",
+          [{ connectionId: INITIAL.connectionId, model, modelName: name || model }],
+          () => {
+            google.script.host.close();
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+            btn.disabled = false;
+          }
+        );
+      });
+
+      $("btnSearch").addEventListener("click", doSearch);
+      $("q").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") doSearch();
+      });
+      $("q").addEventListener("input", () => {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          searchTimer = null;
+          doSearch();
+        }, 350);
+      });
+      $("btnClose").addEventListener("click", () => google.script.host.close());
+
+      $("subtitle").textContent = `Conexion: ${INITIAL.connectionTitle || INITIAL.connectionId}`;
+      $("q").focus();
+
+      runServer(
+        "api_listModules",
+        [{ connectionId: INITIAL.connectionId, limit: 80 }],
+        (items) => {
+          modules = (items || []).slice().sort((a, b) => String(a.title).localeCompare(String(b.title)));
+          renderApps();
+          // Initial listing (no query) for chosen module. Default: none -> empty until user types.
+        },
+        () => {
+          modules = [];
+          renderApps();
+        }
+      );
+    </script>
+  </body>
+</html>
