@@ -46,7 +46,7 @@ Editar `.clasp.json` y dejar:
 
 4) Subir el codigo:
 ```powershell
-npx clasp push
+npx clasp push -f
 ```
 
 5) Abrir el editor:
@@ -57,4 +57,3 @@ npx clasp open
 ## Probar en Google Sheets
 - Recargar la spreadsheet.
 - Menu: `Odoo O2Sheets` -> `Open sidebar`.
-
