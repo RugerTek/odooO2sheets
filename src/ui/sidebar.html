@@ -2,6 +2,7 @@
 <html>
   <head>
     <base target="_top" />
+    <meta charset="utf-8" />
     <style>
       :root {
         --bg: #f8fafc;
@@ -11,22 +12,19 @@
         --line: rgba(15, 23, 42, 0.12);
         --accent: #16a34a;
         --danger: #dc2626;
-        --warn: #d97706;
       }
       html, body {
         margin: 0;
         padding: 0;
         background: var(--bg);
         color: var(--text);
-        font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
-          "Segoe UI Emoji";
+        font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
       }
       .wrap { padding: 12px; }
-      h1 { font-size: 14px; margin: 0 0 10px; }
+      h1 { font-size: 14px; margin: 0 0 8px; }
       h2 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-      h3 { font-size: 12px; margin: 12px 0 8px; color: var(--text); }
-      .row { display: flex; gap: 8px; align-items: center; }
-      .col { flex: 1; }
+      h3 { font-size: 12px; margin: 12px 0 8px; }
+
       .card {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -34,19 +32,25 @@
         padding: 10px;
         margin-bottom: 10px;
       }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .col { flex: 1; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .sep { height: 1px; background: var(--line); margin: 10px 0; }
+
       label { display: block; color: var(--muted); margin: 6px 0 2px; font-size: 12px; }
       input, select, textarea {
         width: 100%;
         box-sizing: border-box;
         padding: 8px 10px;
-        background: #ffffff;
+        background: #fff;
         border: 1px solid rgba(15, 23, 42, 0.18);
         border-radius: 8px;
         color: var(--text);
         outline: none;
       }
-      textarea { resize: vertical; min-height: 68px; }
+      textarea { resize: vertical; min-height: 64px; }
       input::placeholder, textarea::placeholder { color: rgba(15,23,42,0.35); }
+
       button {
         border: 1px solid rgba(15, 23, 42, 0.14);
         background: rgba(15, 23, 42, 0.04);
@@ -57,167 +61,140 @@
       }
       button.primary { border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.10); }
       button.danger { border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.08); }
-      button:disabled { opacity: 0.5; cursor: not-allowed; }
-      .pill { display: inline-flex; gap: 6px; align-items: center; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-      .sep { height: 1px; background: var(--line); margin: 10px 0; }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
       .msg { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(15,23,42,0.02); }
-      .msg.ok { border-color: rgba(34,197,94,0.35); }
-      .msg.err { border-color: rgba(239,68,68,0.35); }
+      .msg.ok { border-color: rgba(22,163,74,0.35); }
+      .msg.err { border-color: rgba(220,38,38,0.35); }
+
       .list { display: flex; flex-direction: column; gap: 8px; }
       .item { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(15,23,42,0.02); }
-      .item .title { font-weight: 600; }
-      .item .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-      .item .actions { margin-top: 8px; display: flex; gap: 8px; }
-      .small { font-size: 12px; color: var(--muted); }
-      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      .title { font-weight: 600; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
       .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border: 1px solid var(--line); padding: 1px 6px; border-radius: 7px; background: rgba(15,23,42,0.02); }
-      .step { display: inline-flex; align-items: center; gap: 8px; }
-      .step .n { width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
-      .step .t { font-weight: 600; }
     </style>
   </head>
   <body>
     <div class="wrap">
       <h1>Odoo O2Sheets</h1>
-      <div class="small" id="ctx"></div>
+      <div class="hint" id="ctx"></div>
 
       <div class="card">
-        <h2>Como Probar (sin programacion)</h2>
+        <h2>Guia Rapida</h2>
         <div class="hint">
-          1) Crea una Connection (URL + Database).<br />
-          2) Hace Login (con tu usuario Odoo).<br />
-          3) Busca un modelo, elegi campos y guarda un Datasource.<br />
-          4) Apreta <span class="kbd">Refresh</span> para traer datos a la sheet.
-        </div>
-        <div class="hint" style="margin-top: 8px;">
-          Importante: para Odoo Online, el campo <b>Database</b> suele ser el subdominio (ej: <span class="kbd">unika-sa-motor-haus</span>).
+          1) Crea una conexion (URL + Database).<br />
+          2) Hace login.<br />
+          3) Crea una extraccion: elegi modelo y campos, guarda, y luego <span class="kbd">Refresh</span>.
         </div>
       </div>
 
       <div class="card">
-        <h2>Connections</h2>
-        <div class="row" style="margin-bottom: 8px;">
-          <button id="btnTestUrl">Test URL</button>
-          <div class="small col" id="urlTestOut"></div>
-        </div>
-        <div class="list" id="connectionsList"></div>
-        <div class="sep"></div>
-        <div class="row">
-          <div class="pill">New connection</div>
-        </div>
-        <div class="hint" style="margin-top: 8px;">
-          Completa solo 2 cosas: URL y Database.
-        </div>
+        <h2>1) Conexion</h2>
         <label>Odoo URL (publica)</label>
-        <input id="c_url" placeholder="https://tu-instancia.odoo.com" />
-        <div class="hint">
-          Ejemplos: <span class="kbd">https://xxxxx.odoo.com</span> o <span class="kbd">https://xxxxx.dev.odoo.com</span>
-        </div>
+        <input id="c_url" placeholder="https://xxxxx.odoo.com o https://xxxxx.dev.odoo.com" />
         <label>Database (nombre exacto)</label>
         <input id="c_db" placeholder="ej: unika-sa-motor-haus1-main-25276166" />
-        <div class="hint">
-          Si te aparece “Database no encontrada”, significa que este valor no coincide con el de esa URL.
-        </div>
-        <div class="grid2">
-          <div>
-            <label><input type="checkbox" id="c_store" /> Store connections</label>
-          </div>
-          <div>
-            <label><input type="checkbox" id="c_share" /> Share credentials</label>
-          </div>
-        </div>
-        <div class="row">
-          <button class="primary" id="btnCreateConn">Save connection</button>
-          <button id="btnReload">Reload</button>
+
+        <div class="row" style="margin-top: 8px;">
+          <button id="btnTestUrl">Probar URL</button>
+          <button class="primary" id="btnCreateConn">Guardar conexion</button>
+          <button id="btnReload">Recargar</button>
         </div>
         <div id="connMsg"></div>
+
+        <div class="sep"></div>
+        <div class="hint">Conexiones guardadas en esta planilla:</div>
+        <div class="list" id="connectionsList"></div>
       </div>
 
       <div class="card">
-        <h2>Login (Odoo)</h2>
-        <label>Connection</label>
+        <h2>2) Login</h2>
+        <label>Conexion</label>
         <select id="login_conn"></select>
-        <label>Odoo username</label>
-        <input id="login_user" placeholder="user@example.com" />
-        <label>Odoo password</label>
-        <input id="login_pass" type="password" placeholder="••••••••" />
-        <label><input type="checkbox" id="login_remember" /> Remember my credentials (required for scheduler)</label>
-        <div class="hint">
-          Para probar manualmente, podes dejarlo apagado. Para scheduler automatico, tiene que estar encendido.
-        </div>
-        <div class="row">
-          <button class="primary" id="btnLogin">Test login / Save</button>
+        <label>Usuario Odoo</label>
+        <input id="login_user" placeholder="ej: admin o tu-email@empresa.com" />
+        <label>Password Odoo</label>
+        <input id="login_pass" type="password" placeholder="password" />
+        <label><input type="checkbox" id="login_remember" /> Recordar credenciales (solo si queres scheduler)</label>
+        <div class="row" style="margin-top: 8px;">
+          <button class="primary" id="btnLogin">Probar login</button>
         </div>
         <div id="loginMsg"></div>
       </div>
 
       <div class="card">
-        <h2>Datasources</h2>
-        <div class="list" id="datasourcesList"></div>
-        <div class="sep"></div>
-        <div class="pill">New datasource (wizard simple)</div>
-        <div class="hint" style="margin-top:6px;">
-          Paso 1: Elegi la sheet y la connection. Paso 2: busca el modelo. Paso 3: carga campos y selecciona. Paso 4: guarda.
-        </div>
-        <div class="grid2" style="margin-top: 8px;">
+        <h2>3) Crear Extraccion</h2>
+        <div class="grid2">
           <div>
-            <label>Sheet</label>
+            <label>Hoja destino</label>
             <select id="ds_sheet"></select>
           </div>
           <div>
-            <label>Connection</label>
+            <label>Conexion</label>
             <select id="ds_conn"></select>
           </div>
         </div>
-        <label>Odoo model</label>
-        <input id="ds_model" placeholder="Ej: res.partner" />
+
+        <h3>Modelo</h3>
+        <label>Modelo Odoo (tecnico)</label>
+        <input id="ds_model" placeholder="ej: res.partner" />
         <div class="row" style="margin-top: 8px;">
-          <input id="model_query" class="col" placeholder="Search models (e.g. partner, invoice, sale)" />
-          <button id="btnSearchModels">Search</button>
+          <input id="model_query" class="col" placeholder="Buscar modelo (ej: partner, invoice, sale)" />
+          <button id="btnSearchModels">Buscar</button>
         </div>
         <div id="modelResults" class="list" style="margin-top: 8px;"></div>
-        <h3 class="step"><span class="n">3</span><span class="t">Campos</span></h3>
-        <div class="hint">Podes seleccionar desde la lista o pegar un CSV.</div>
-        <label>Fields (CSV)</label>
-        <input id="ds_fields" placeholder="id,name,email,phone" />
+
+        <h3>Campos</h3>
         <div class="row" style="margin-top: 8px;">
-          <button id="btnLoadFields">Load fields</button>
-          <div class="small col">Uses Odoo `fields_get` (requires login).</div>
+          <button id="btnLoadFields">Cargar campos del modelo</button>
+          <div class="hint col">Luego marcarlos y reordenarlos abajo.</div>
+        </div>
+        <div class="row" style="margin-top: 8px;">
+          <input id="field_query" class="col" placeholder="Filtrar campos (ej: name, email, phone)" />
+          <button id="btnClearFieldFilter">Limpiar</button>
         </div>
         <div id="fieldResults" class="list" style="margin-top: 8px; max-height: 180px; overflow: auto;"></div>
-        <div class="sep"></div>
-        <h3 class="step"><span class="n">4</span><span class="t">Orden de columnas</span></h3>
-        <div class="hint">Selecciona campos y luego ajusta el orden.</div>
+
+        <h3>Columnas (seleccionadas)</h3>
+        <div class="hint">Aca podes cambiar el orden y el encabezado en la hoja.</div>
         <div id="selectedFields" class="list" style="margin-top: 8px;"></div>
+
+        <div class="sep"></div>
         <div class="grid2">
           <div>
-            <label>Limit</label>
+            <label>Limite</label>
             <input id="ds_limit" type="number" value="80" />
           </div>
           <div>
-            <label>Order by (optional)</label>
+            <label>Orden (opcional)</label>
             <input id="ds_order" placeholder="id desc" />
           </div>
         </div>
-        <label>Domain (optional JSON array)</label>
+        <label>Filtro (Domain) opcional (JSON)</label>
         <textarea id="ds_domain" placeholder='[["active","=",true]]'></textarea>
         <div class="grid2">
           <div>
-            <label>Write mode</label>
+            <label>Modo de escritura</label>
             <select id="ds_mode">
               <option value="REPLACE">REPLACE</option>
               <option value="APPEND">APPEND</option>
             </select>
           </div>
           <div>
-            <label><input type="checkbox" id="ds_header" checked /> Write header row</label>
+            <label><input type="checkbox" id="ds_header" checked /> Escribir encabezados</label>
           </div>
         </div>
-        <div class="row">
-          <button class="primary" id="btnCreateDs">Save datasource</button>
+        <div class="row" style="margin-top: 8px;">
+          <button class="primary" id="btnCreateDs">Guardar extraccion</button>
         </div>
         <div id="dsMsg"></div>
+      </div>
+
+      <div class="card">
+        <h2>Mis Extracciones</h2>
+        <div class="list" id="datasourcesList"></div>
       </div>
     </div>
 
@@ -226,7 +203,8 @@
 
       let state = { context: null, connections: [], datasources: [] };
       let selectedFields = []; // [{fieldName,label,type}]
-      let fieldMeta = {}; // fieldName -> {label,type,relation,help}
+      let fieldMeta = {}; // fieldName -> meta
+      let allFields = [];
 
       function setMsg(el, kind, text) {
         el.innerHTML = "";
@@ -237,92 +215,93 @@
         el.appendChild(d);
       }
 
+      function escapeHtml(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
       function loadBootstrap() {
         google.script.run
           .withSuccessHandler((res) => {
             state = res;
-            $("ctx").textContent = `Doc: ${res.context.spreadsheetId} | User: ${res.context.userEmail}`;
+            $("ctx").textContent = `Doc: ${res.context.spreadsheetId} | Usuario Google: ${res.context.userEmail}`;
             render();
             refreshSheets();
           })
           .withFailureHandler((e) => {
-            console.error(e);
+            setMsg($("connMsg"), "err", e.message || String(e));
           })
           .api_getBootstrap();
       }
 
-      function suggestDbFromUrl() {
-        const url = $("c_url").value.trim();
-        if (!url) return;
-        try {
-          const u = new URL(url);
-          const host = u.hostname || "";
-          // Odoo Online typical: <db>.odoo.com
-          if (host.endsWith(".odoo.com")) {
-            const sub = host.split(".")[0];
-            if (sub && !$("c_db").value.trim()) $("c_db").value = sub;
-          }
-        } catch (_) {}
-      }
-
       function render() {
-        const connSelIds = ["login_conn", "ds_conn"];
-        connSelIds.forEach((sid) => {
-          const sel = $(sid);
-          sel.innerHTML = "";
-          const opt0 = document.createElement("option");
-          opt0.value = "";
-          opt0.textContent = "Select...";
-          sel.appendChild(opt0);
-          state.connections.forEach((c) => {
-            const o = document.createElement("option");
-            o.value = c.id;
-            o.textContent = `${c.title} (${c.name})`;
-            sel.appendChild(o);
-          });
-        });
-
+        // Connections list
         const cl = $("connectionsList");
         cl.innerHTML = "";
-        if (state.connections.length === 0) {
-          const empty = document.createElement("div");
-          empty.className = "small";
-          empty.textContent = "No connections yet.";
-          cl.appendChild(empty);
+        if (!state.connections.length) {
+          const d = document.createElement("div");
+          d.className = "hint";
+          d.textContent = "No hay conexiones todavia.";
+          cl.appendChild(d);
         } else {
           state.connections.forEach((c) => {
             const it = document.createElement("div");
             it.className = "item";
             it.innerHTML = `
-              <div class="title">${escapeHtml(c.title)} <span class="pill">${escapeHtml(c.name)}</span></div>
-              <div class="meta">${escapeHtml(c.odooUrl)} | DB: ${escapeHtml(c.odooDb)} | shareCreds=${c.shareCredentials}</div>
+              <div class="title">${escapeHtml(c.title || c.name)}</div>
+              <div class="meta">${escapeHtml(c.odooUrl)} | DB: ${escapeHtml(c.odooDb)}</div>
             `;
             cl.appendChild(it);
           });
         }
 
+        // Connection selects
+        const prevLogin = $("login_conn").value;
+        const prevDs = $("ds_conn").value;
+        for (const sid of ["login_conn", "ds_conn"]) {
+          const sel = $(sid);
+          sel.innerHTML = "";
+          const opt0 = document.createElement("option");
+          opt0.value = "";
+          opt0.textContent = "Seleccionar...";
+          sel.appendChild(opt0);
+          state.connections.forEach((c) => {
+            const o = document.createElement("option");
+            o.value = c.id;
+            o.textContent = c.title || c.name;
+            sel.appendChild(o);
+          });
+        }
+        if (prevLogin) $("login_conn").value = prevLogin;
+        if (prevDs) $("ds_conn").value = prevDs;
+        if (!prevLogin && state.connections.length === 1) $("login_conn").value = state.connections[0].id;
+        if (!prevDs && state.connections.length === 1) $("ds_conn").value = state.connections[0].id;
+
+        // Datasources list
         const dl = $("datasourcesList");
         dl.innerHTML = "";
-        if (state.datasources.length === 0) {
-          const empty = document.createElement("div");
-          empty.className = "small";
-          empty.textContent = "No datasources yet.";
-          dl.appendChild(empty);
+        if (!state.datasources.length) {
+          const d = document.createElement("div");
+          d.className = "hint";
+          d.textContent = "No hay extracciones todavia.";
+          dl.appendChild(d);
         } else {
-          state.datasources.forEach((d) => {
+          state.datasources.forEach((ds) => {
             const it = document.createElement("div");
             it.className = "item";
-            const last = d.lastRun ? `${d.lastRun.status} @ ${d.lastRun.at} (${d.lastRun.rows} rows)` : "never";
-            const sched = d.schedulerEnabled ? "on" : "off";
+            const last = ds.lastRun ? `${ds.lastRun.status} @ ${ds.lastRun.at} (${ds.lastRun.rows} filas)` : "nunca";
             it.innerHTML = `
-              <div class="title">${escapeHtml(d.sheetName)} <span class="pill">${escapeHtml(d.odooModel)}</span></div>
-              <div class="meta">Fields: ${escapeHtml(d.fields.map(f => f.fieldName).join(","))}</div>
-              <div class="meta">Last run: ${escapeHtml(last)} | scheduler: ${sched}</div>
-              <div class="actions">
-                <button class="primary" data-action="refresh" data-id="${d.id}">Refresh</button>
-                <button data-action="schedule" data-id="${d.id}">${d.schedulerEnabled ? "Disable schedule" : "Enable schedule"}</button>
+              <div class="title">${escapeHtml(ds.sheetName)} <span class="pill">${escapeHtml(ds.odooModel)}</span></div>
+              <div class="meta">Campos: ${escapeHtml(ds.fields.map((f) => f.fieldName).join(", "))}</div>
+              <div class="meta">Ultima ejecucion: ${escapeHtml(last)}</div>
+              <div class="row" style="margin-top:8px;">
+                <button class="primary" data-action="refresh" data-id="${ds.id}">Refresh</button>
               </div>
-              <div id="ds_item_msg_${d.id}"></div>
+              <div id="ds_item_msg_${ds.id}"></div>
             `;
             dl.appendChild(it);
           });
@@ -341,40 +320,40 @@
               sel.appendChild(o);
             });
           })
+          .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
           .api_listSheets();
       }
 
-      function escapeHtml(s) {
-        return String(s)
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
+      function suggestDbFromUrl() {
+        const url = ($("c_url").value || "").trim();
+        if (!url) return;
+        try {
+          const u = new URL(url.replace(/\\/+$/, ""));
+          const host = u.hostname || "";
+          if (host.endsWith(".odoo.com")) {
+            const sub = host.split(".")[0];
+            if (sub && !$("c_db").value.trim()) $("c_db").value = sub;
+          }
+        } catch (_) {}
       }
 
-      $("btnReload").addEventListener("click", loadBootstrap);
       $("c_url").addEventListener("blur", suggestDbFromUrl);
 
+      $("btnReload").addEventListener("click", loadBootstrap);
+
       $("btnTestUrl").addEventListener("click", () => {
-        const url = $("c_url").value || (state.connections[0] && state.connections[0].odooUrl) || "";
-        if (!url) {
-          $("urlTestOut").textContent = "Pega la URL de Odoo primero.";
-          return;
-        }
-        $("urlTestOut").textContent = "Probando...";
+        setMsg($("connMsg"), "", "");
+        const url = ($("c_url").value || "").trim();
+        if (!url) return setMsg($("connMsg"), "err", "Pegá la URL primero.");
+        $("btnTestUrl").disabled = true;
         google.script.run
-          .withSuccessHandler((res) => {
-            const checks = (res.checks || []).map((c) => `${c.code}`).join(", ");
-            const v = res && res.version;
-            const vTxt = v ? ` | version: ${JSON.stringify(v)}` : "";
-            $("urlTestOut").textContent = `OK${vTxt}${checks ? " | codes: " + checks : ""}`;
+          .withSuccessHandler(() => {
+            setMsg($("connMsg"), "ok", "URL OK (es accesible).");
+            $("btnTestUrl").disabled = false;
           })
           .withFailureHandler((e) => {
-            $("urlTestOut").textContent =
-              "Error: " +
-              (e.message || String(e)) +
-              " (verifica que la URL termine en .odoo.com y no tenga espacios)";
+            setMsg($("connMsg"), "err", e.message || String(e));
+            $("btnTestUrl").disabled = false;
           })
           .api_testOdooUrl({ odooUrl: url });
       });
@@ -383,18 +362,12 @@
         setMsg($("connMsg"), "", "");
         const url = ($("c_url").value || "").trim();
         const db = ($("c_db").value || "").trim();
-        if (!url) {
-          setMsg($("connMsg"), "err", "Falta la URL.");
-          return;
-        }
-        if (!db) {
-          setMsg($("connMsg"), "err", "Falta el Database.");
-          return;
-        }
+        if (!url) return setMsg($("connMsg"), "err", "Falta la URL.");
+        if (!db) return setMsg($("connMsg"), "err", "Falta el Database.");
         $("btnCreateConn").disabled = true;
         google.script.run
           .withSuccessHandler((conn) => {
-            setMsg($("connMsg"), "ok", "Connection guardada. Ahora hace Login (abajo).");
+            setMsg($("connMsg"), "ok", "Conexion guardada. Ahora hace login.");
             loadBootstrap();
             setTimeout(() => {
               try {
@@ -408,27 +381,24 @@
             setMsg($("connMsg"), "err", e.message || String(e));
             $("btnCreateConn").disabled = false;
           })
-          .api_createConnection({
-            odooUrl: $("c_url").value,
-            odooDb: $("c_db").value,
-            storeConnections: $("c_store").checked,
-            shareCredentials: $("c_share").checked,
-          });
+          .api_createConnection({ odooUrl: url, odooDb: db, storeConnections: false, shareCredentials: false });
       });
 
       $("btnLogin").addEventListener("click", () => {
         setMsg($("loginMsg"), "", "");
         const connId = $("login_conn").value;
-        if (!connId) {
-          setMsg($("loginMsg"), "err", "Primero selecciona una Connection (o crea una y guardala).");
-          return;
-        }
+        if (!connId) return setMsg($("loginMsg"), "err", "Selecciona una conexion.");
+        $("btnLogin").disabled = true;
         google.script.run
           .withSuccessHandler((res) => {
-            setMsg($("loginMsg"), "ok", `Login OK (uid=${res.uid}). Advanced=${res.canUseAdvanced}`);
+            setMsg($("loginMsg"), "ok", `Login OK (uid=${res.uid}).`);
+            $("btnLogin").disabled = false;
             loadBootstrap();
           })
-          .withFailureHandler((e) => setMsg($("loginMsg"), "err", e.message || String(e)))
+          .withFailureHandler((e) => {
+            setMsg($("loginMsg"), "err", e.message || String(e));
+            $("btnLogin").disabled = false;
+          })
           .api_setCredential({
             connectionId: connId,
             odooUsername: $("login_user").value,
@@ -437,75 +407,36 @@
           });
       });
 
-      $("btnCreateDs").addEventListener("click", () => {
-        setMsg($("dsMsg"), "", "");
-        if (!$("ds_conn").value) {
-          setMsg($("dsMsg"), "err", "Selecciona una Connection.");
-          return;
-        }
-        if (!$("ds_sheet").value) {
-          setMsg($("dsMsg"), "err", "Selecciona una Sheet.");
-          return;
-        }
-        if (!$("ds_model").value) {
-          setMsg($("dsMsg"), "err", "Selecciona un modelo (Search + Use model).");
-          return;
-        }
-        const fieldArr =
-          selectedFields.length > 0
-            ? selectedFields.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }))
-            : [];
-        google.script.run
-          .withSuccessHandler((ds) => {
-            setMsg($("dsMsg"), "ok", `Datasource saved: ${ds.id}`);
-            loadBootstrap();
-          })
-          .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
-          .api_createDatasource({
-            sheetName: $("ds_sheet").value,
-            connectionId: $("ds_conn").value,
-            odooModel: $("ds_model").value,
-            fieldsCsv: $("ds_fields").value,
-            fields: fieldArr,
-            limit: Number($("ds_limit").value || 80),
-            domain: $("ds_domain").value,
-            orderBy: $("ds_order").value,
-            writeMode: $("ds_mode").value,
-            header: $("ds_header").checked,
-          });
-      });
-
       function renderModelResults(items) {
         const root = $("modelResults");
         root.innerHTML = "";
         if (!items || items.length === 0) {
           const d = document.createElement("div");
-          d.className = "small";
-          d.textContent = "No results.";
+          d.className = "hint";
+          d.textContent = "Sin resultados.";
           root.appendChild(d);
           return;
         }
         items.forEach((m) => {
           const it = document.createElement("div");
           it.className = "item";
-          const mod = m.modules ? ` | modules: ${m.modules}` : "";
           it.innerHTML = `
             <div class="title">${escapeHtml(m.model)} <span class="pill">${escapeHtml(m.name || "")}</span></div>
-            <div class="meta">${escapeHtml(mod)}</div>
-            <div class="actions"><button class="primary" data-action="pickModel" data-model="${escapeHtml(m.model)}">Use model</button></div>
+            <div class="row" style="margin-top:8px;">
+              <button class="primary" data-action="pickModel" data-model="${escapeHtml(m.model)}">Usar este modelo</button>
+            </div>
           `;
           root.appendChild(it);
         });
       }
 
       $("btnSearchModels").addEventListener("click", () => {
+        setMsg($("dsMsg"), "", "");
         const connId = $("ds_conn").value || $("login_conn").value;
-        const q = $("model_query").value;
-        if (!connId) {
-          setMsg($("dsMsg"), "err", "Primero selecciona una Connection y hace Login.");
-          return;
-        }
-        $("modelResults").innerHTML = `<div class="small">Searching...</div>`;
+        if (!connId) return setMsg($("dsMsg"), "err", "Selecciona conexion y hace login.");
+        const q = ($("model_query").value || "").trim();
+        if (!q) return setMsg($("dsMsg"), "err", "Escribi algo para buscar el modelo.");
+        $("modelResults").innerHTML = `<div class="hint">Buscando...</div>`;
         google.script.run
           .withSuccessHandler((items) => renderModelResults(items))
           .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
@@ -517,34 +448,31 @@
         root.innerHTML = "";
         if (!fields || fields.length === 0) {
           const d = document.createElement("div");
-          d.className = "small";
-          d.textContent = "No fields (or not allowed).";
+          d.className = "hint";
+          d.textContent = "No pude cargar campos (revisa login y modelo).";
           root.appendChild(d);
           return;
         }
-
+        allFields = fields;
         fieldMeta = {};
-        fields.forEach((f) => {
-          fieldMeta[f.fieldName] = f;
-        });
+        fields.forEach((f) => (fieldMeta[f.fieldName] = f));
 
-        const current = new Set(
-          $("ds_fields")
-            .value.split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        );
+        const q = ($("field_query").value || "").trim().toLowerCase();
+        const filtered = q
+          ? fields.filter((f) => String(f.fieldName).toLowerCase().includes(q) || String(f.label).toLowerCase().includes(q))
+          : fields;
 
-        fields.forEach((f) => {
+        const current = new Set(selectedFields.map((x) => x.fieldName));
+
+        filtered.forEach((f) => {
           const it = document.createElement("div");
           it.className = "item";
-          const rel = f.relation ? ` -> ${f.relation}` : "";
           const checked = current.has(f.fieldName) ? "checked" : "";
           it.innerHTML = `
             <label style="margin:0;">
               <input type="checkbox" data-action="toggleField" data-field="${escapeHtml(f.fieldName)}" ${checked} />
               <span class="title">${escapeHtml(f.fieldName)}</span>
-              <span class="pill">${escapeHtml(f.type)}${escapeHtml(rel)}</span>
+              <span class="pill">${escapeHtml(f.type)}</span>
             </label>
             <div class="meta">${escapeHtml(f.label || "")}</div>
           `;
@@ -552,25 +480,13 @@
         });
       }
 
-      function syncSelectedFieldsFromCsvIfEmpty() {
-        if (selectedFields.length > 0) return;
-        const csv = $("ds_fields")
-          .value.split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        selectedFields = csv.map((name) => {
-          const meta = fieldMeta[name] || {};
-          return { fieldName: name, label: meta.label || name, type: meta.type || "" };
-        });
-      }
-
       function renderSelectedFields() {
         const root = $("selectedFields");
         root.innerHTML = "";
-        if (selectedFields.length === 0) {
+        if (!selectedFields.length) {
           const d = document.createElement("div");
-          d.className = "small";
-          d.textContent = "Selecciona campos (Load fields) o pega un CSV.";
+          d.className = "hint";
+          d.textContent = "Selecciona campos arriba (checkbox).";
           root.appendChild(d);
           return;
         }
@@ -581,7 +497,8 @@
             <div class="row">
               <div class="col">
                 <div class="title">${escapeHtml(f.fieldName)}</div>
-                <div class="meta">${escapeHtml(f.label || "")}</div>
+                <label>Encabezado</label>
+                <input data-action="setLabel" data-idx="${idx}" value="${escapeHtml(f.label || f.fieldName)}" />
               </div>
               <div class="row">
                 <button data-action="moveFieldUp" data-idx="${idx}">Up</button>
@@ -595,51 +512,86 @@
       }
 
       $("btnLoadFields").addEventListener("click", () => {
+        setMsg($("dsMsg"), "", "");
         const connId = $("ds_conn").value || $("login_conn").value;
-        const model = $("ds_model").value;
-        if (!connId) {
-          setMsg($("dsMsg"), "err", "Select a connection first.");
-          return;
-        }
-        if (!model) {
-          setMsg($("dsMsg"), "err", "Set a model first (or search and pick one).");
-          return;
-        }
-        $("fieldResults").innerHTML = `<div class="small">Loading fields...</div>`;
+        const model = ($("ds_model").value || "").trim();
+        if (!connId) return setMsg($("dsMsg"), "err", "Selecciona conexion y hace login.");
+        if (!model) return setMsg($("dsMsg"), "err", "Primero selecciona un modelo.");
+        $("fieldResults").innerHTML = `<div class="hint">Cargando campos...</div>`;
         google.script.run
           .withSuccessHandler((items) => {
-            renderFieldResults(items);
-            // keep selection in sync with CSV if user already typed it
+            // reset selections only if model changed
             selectedFields = [];
-            syncSelectedFieldsFromCsvIfEmpty();
+            renderFieldResults(items);
             renderSelectedFields();
           })
           .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
           .api_getModelFields({ connectionId: connId, model });
       });
 
+      $("field_query").addEventListener("input", () => {
+        if (allFields.length) renderFieldResults(allFields);
+      });
+      $("btnClearFieldFilter").addEventListener("click", () => {
+        $("field_query").value = "";
+        if (allFields.length) renderFieldResults(allFields);
+      });
+
+      $("btnCreateDs").addEventListener("click", () => {
+        setMsg($("dsMsg"), "", "");
+        const connId = $("ds_conn").value;
+        const sheet = $("ds_sheet").value;
+        const model = ($("ds_model").value || "").trim();
+        if (!connId) return setMsg($("dsMsg"), "err", "Selecciona conexion.");
+        if (!sheet) return setMsg($("dsMsg"), "err", "Selecciona hoja.");
+        if (!model) return setMsg($("dsMsg"), "err", "Selecciona modelo.");
+        if (!selectedFields.length) return setMsg($("dsMsg"), "err", "Selecciona al menos 1 campo.");
+
+        const fieldArr = selectedFields.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }));
+        $("btnCreateDs").disabled = true;
+        google.script.run
+          .withSuccessHandler((ds) => {
+            setMsg($("dsMsg"), "ok", "Extraccion guardada. Ahora podes apretar Refresh en la lista de abajo.");
+            $("btnCreateDs").disabled = false;
+            loadBootstrap();
+          })
+          .withFailureHandler((e) => {
+            setMsg($("dsMsg"), "err", e.message || String(e));
+            $("btnCreateDs").disabled = false;
+          })
+          .api_createDatasource({
+            sheetName: sheet,
+            connectionId: connId,
+            odooModel: model,
+            fields: fieldArr,
+            limit: Number($("ds_limit").value || 80),
+            domain: $("ds_domain").value,
+            orderBy: $("ds_order").value,
+            writeMode: $("ds_mode").value,
+            header: $("ds_header").checked,
+          });
+      });
+
       document.body.addEventListener("click", (ev) => {
         const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
-        const cb =
-          ev.target && ev.target.closest && ev.target.closest("input[type=checkbox][data-action]");
+        const cb = ev.target && ev.target.closest && ev.target.closest("input[type=checkbox][data-action]");
         const action = btn ? btn.getAttribute("data-action") : cb ? cb.getAttribute("data-action") : null;
         if (!action) return;
 
+        if (action === "pickModel") {
+          const model = btn.getAttribute("data-model");
+          $("ds_model").value = model;
+          $("modelResults").innerHTML = "";
+          // Auto-load fields.
+          $("btnLoadFields").click();
+          return;
+        }
+
         if (action === "toggleField") {
           const field = cb.getAttribute("data-field");
-          const existing = $("ds_fields")
-            .value.split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
-          const set = new Set(existing);
-          if (cb.checked) set.add(field);
-          else set.delete(field);
-          $("ds_fields").value = Array.from(set).join(",");
-
-          // Maintain selectedFields ordered by selection time.
           if (cb.checked) {
-            const meta = fieldMeta[field] || {};
             if (!selectedFields.some((x) => x.fieldName === field)) {
+              const meta = fieldMeta[field] || {};
               selectedFields.push({ fieldName: field, label: meta.label || field, type: meta.type || "" });
             }
           } else {
@@ -649,75 +601,55 @@
           return;
         }
 
-        if (action === "pickModel") {
-          const model = btn.getAttribute("data-model");
-          $("ds_model").value = model;
-          // Auto-load fields after picking.
-          $("btnLoadFields").click();
-          return;
-        }
-
         if (action === "moveFieldUp" || action === "moveFieldDown" || action === "removeField") {
           const idx = Number(btn.getAttribute("data-idx"));
-          if (!Number.isFinite(idx)) return;
-          if (action === "removeField") {
-            selectedFields.splice(idx, 1);
-          } else if (action === "moveFieldUp" && idx > 0) {
+          if (!Number.isFinite(idx) || !selectedFields[idx]) return;
+          if (action === "removeField") selectedFields.splice(idx, 1);
+          if (action === "moveFieldUp" && idx > 0) {
             const t = selectedFields[idx - 1];
             selectedFields[idx - 1] = selectedFields[idx];
             selectedFields[idx] = t;
-          } else if (action === "moveFieldDown" && idx < selectedFields.length - 1) {
+          }
+          if (action === "moveFieldDown" && idx < selectedFields.length - 1) {
             const t = selectedFields[idx + 1];
             selectedFields[idx + 1] = selectedFields[idx];
             selectedFields[idx] = t;
           }
-          $("ds_fields").value = selectedFields.map((x) => x.fieldName).join(",");
           renderSelectedFields();
           return;
         }
 
-        if (!btn) return;
-
-        const id = btn.getAttribute("data-id");
-        const msgEl = $("ds_item_msg_" + id);
-        setMsg(msgEl, "", "");
-
         if (action === "refresh") {
+          const id = btn.getAttribute("data-id");
+          const msgEl = $("ds_item_msg_" + id);
+          setMsg(msgEl, "", "");
           btn.disabled = true;
           google.script.run
             .withSuccessHandler((res) => {
-              setMsg(msgEl, "ok", `OK: ${res.rowsFetched} rows`);
+              setMsg(msgEl, "ok", `OK: ${res.rowsFetched} filas`);
+              btn.disabled = false;
               loadBootstrap();
             })
-            .withFailureHandler((e) => setMsg(msgEl, "err", e.message || String(e)))
+            .withFailureHandler((e) => {
+              setMsg(msgEl, "err", e.message || String(e));
+              btn.disabled = false;
+            })
             .api_refreshDatasource(id, { automated: false });
-          setTimeout(() => (btn.disabled = false), 2000);
-          return;
         }
+      });
 
-        if (action === "schedule") {
-          // Minimal scheduler: enable with default (weekdays=Mon-Fri, hours=6,12,18) for now.
-          const enable = btn.textContent.includes("Enable");
-          const cfg = enable
-            ? {
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Etc/UTC",
-                hours: [6, 12, 18],
-                daysOfMonth: [],
-                weekdays: [1, 2, 3, 4, 5],
-                months: [],
-              }
-            : undefined;
-          google.script.run
-            .withSuccessHandler(() => {
-              setMsg(msgEl, "ok", enable ? "Scheduler enabled (basic default)." : "Scheduler disabled.");
-              loadBootstrap();
-            })
-            .withFailureHandler((e) => setMsg(msgEl, "err", e.message || String(e)))
-            .api_setDatasourceSchedule({ datasourceId: id, enabled: enable, config: cfg });
-        }
+      document.body.addEventListener("input", (ev) => {
+        const inp = ev.target && ev.target.closest && ev.target.closest("input[data-action]");
+        if (!inp) return;
+        const action = inp.getAttribute("data-action");
+        if (action !== "setLabel") return;
+        const idx = Number(inp.getAttribute("data-idx"));
+        if (!Number.isFinite(idx) || !selectedFields[idx]) return;
+        selectedFields[idx].label = inp.value;
       });
 
       loadBootstrap();
     </script>
   </body>
 </html>
+
