@@ -9,10 +9,12 @@ await esbuild.build({
   outfile,
   bundle: true,
   platform: "neutral",
-  format: "iife",
+  // Use CommonJS output to avoid an IIFE wrapper. Apps Script's editor detects
+  // runnable functions only when they're defined at the top-level.
+  // With `bundle: true`, esbuild will inline modules and won't emit `require()`.
+  format: "cjs",
   target: ["es2020"],
   sourcemap: false,
   legalComments: "none",
   logLevel: "info",
 });
-
