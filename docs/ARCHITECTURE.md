@@ -1,4 +1,4 @@
-﻿# Arquitectura
+# Arquitectura
 
 ## Componentes
 - Google Sheets Add-on (Apps Script)
@@ -8,9 +8,9 @@
 - Conector Odoo (HTTP): JSON-RPC
 
 ## Integracion Odoo (sin addon)
-- Autenticacion: /web/session/authenticate
-- Llamadas dataset: /web/dataset/call_kw (e.g. search_read, ead, ead_group)
-- Requiere odoo_url publica + odoo_db
+- Autenticacion: `/web/session/authenticate`
+- Llamadas dataset: `/web/dataset/call_kw` (e.g. `search_read`, `read`, `read_group`)
+- Requiere `odoo_url` publica + `odoo_db`
 
 ## Estrategia de ejecucion
 - Manual refresh: accion UI -> Apps Script server -> Odoo -> write to sheet
