@@ -3,14 +3,16 @@ import {
   getCredential,
   getCurrentContext,
   getDatasource,
+  getEphemeralCredential,
   listConnections,
   listDatasources,
   saveCredential,
+  saveEphemeralCredential,
   touchUpdatedAt,
   upsertConnection,
   upsertDatasource,
 } from "./storage";
-import { authenticate, canUseAdvanced, OdooSession } from "./odoo";
+import { authenticate, canUseAdvanced, callKw, OdooSession } from "./odoo";
 import { Connection, Credential, Datasource, DatasourceField, SchedulerConfig } from "./types";
 import { normalizeConnectionName, normalizeOdooUrl, nowIso, parseDomain, uuidV4 } from "./util";
 import { ensureSchedulerTrigger } from "./scheduler";
@@ -104,6 +106,13 @@ export function api_setCredential(input: {
       updatedAt: nowIso(),
     };
     saveCredential(cred);
+  } else {
+    // Keep it usable for manual actions during this session without persisting to PropertiesService.
+    saveEphemeralCredential({
+      connectionId: conn.id,
+      odooUsername: input.odooUsername,
+      secret: input.odooPassword,
+    });
   }
 
   return { ok: true, uid: session.uid, canUseAdvanced: canUseAdvanced(session) };
@@ -115,16 +124,70 @@ function getSessionForConnection(connectionId: string): OdooSession {
 
   const scope = conn.shareCredentials ? "DOCUMENT" : "USER";
   const cred = getCredential(connectionId, scope);
-  if (!cred) {
-    throw new Error("Missing credentials. Please login (and optionally remember credentials).");
-  }
+  const tmp = cred ? undefined : getEphemeralCredential(connectionId);
+  if (!cred && !tmp) throw new Error("Missing credentials. Please login (and optionally remember credentials).");
 
   return authenticate({
     odooUrl: conn.odooUrl,
     db: conn.odooDb,
-    username: cred.odooUsername,
-    password: cred.secret,
+    username: cred ? cred.odooUsername : tmp!.odooUsername,
+    password: cred ? cred.secret : tmp!.secret,
   });
+}
+
+export function api_searchModels(input: {
+  connectionId: string;
+  query: string;
+  limit?: number;
+}): Array<{ model: string; name: string; modules?: string }> {
+  const session = getSessionForConnection(input.connectionId);
+  const q = input.query.trim();
+  if (!q) return [];
+
+  const limit = Math.max(1, Math.min(50, Number(input.limit) || 20));
+
+  // Use ir.model to search by technical model or display name.
+  const domain: any[] = ["|", ["model", "ilike", q], ["name", "ilike", q]];
+  const rows = callKw<Array<{ model: string; name: string; modules?: string }>>(session, {
+    model: "ir.model",
+    method: "search_read",
+    args: [domain],
+    kwargs: { fields: ["model", "name", "modules"], limit, order: "model asc" },
+  });
+  return rows
+    .filter((r) => r && typeof r.model === "string")
+    .map((r) => ({ model: r.model, name: r.name || r.model, modules: (r as any).modules }));
+}
+
+export function api_getModelFields(input: {
+  connectionId: string;
+  model: string;
+}): Array<{ fieldName: string; label: string; type: string; relation?: string; help?: string }> {
+  const session = getSessionForConnection(input.connectionId);
+  const model = input.model.trim();
+  if (!model) throw new Error("Model is required.");
+
+  const mapping = callKw<Record<string, any>>(session, {
+    model,
+    method: "fields_get",
+    args: [[], ["string", "type", "relation", "help"]],
+    kwargs: {},
+  });
+
+  const out: Array<{ fieldName: string; label: string; type: string; relation?: string; help?: string }> = [];
+  for (const [fieldName, info] of Object.entries(mapping || {})) {
+    const label = typeof info?.string === "string" ? info.string : fieldName;
+    const type = typeof info?.type === "string" ? info.type : "unknown";
+    out.push({
+      fieldName,
+      label,
+      type,
+      relation: typeof info?.relation === "string" ? info.relation : undefined,
+      help: typeof info?.help === "string" ? info.help : undefined,
+    });
+  }
+  out.sort((a, b) => a.fieldName.localeCompare(b.fieldName));
+  return out;
 }
 
 export function api_listSheets(): string[] {

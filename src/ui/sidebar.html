@@ -143,8 +143,18 @@
         </div>
         <label>Odoo model (technical)</label>
         <input id="ds_model" placeholder="res.partner" />
+        <div class="row" style="margin-top: 8px;">
+          <input id="model_query" class="col" placeholder="Search models (e.g. partner, invoice, sale)" />
+          <button id="btnSearchModels">Search</button>
+        </div>
+        <div id="modelResults" class="list" style="margin-top: 8px;"></div>
         <label>Fields (CSV)</label>
         <input id="ds_fields" placeholder="id,name,email,phone" />
+        <div class="row" style="margin-top: 8px;">
+          <button id="btnLoadFields">Load fields</button>
+          <div class="small col">Uses Odoo `fields_get` (requires login).</div>
+        </div>
+        <div id="fieldResults" class="list" style="margin-top: 8px; max-height: 180px; overflow: auto;"></div>
         <div class="grid2">
           <div>
             <label>Limit</label>
@@ -350,10 +360,126 @@
           });
       });
 
+      function renderModelResults(items) {
+        const root = $("modelResults");
+        root.innerHTML = "";
+        if (!items || items.length === 0) {
+          const d = document.createElement("div");
+          d.className = "small";
+          d.textContent = "No results.";
+          root.appendChild(d);
+          return;
+        }
+        items.forEach((m) => {
+          const it = document.createElement("div");
+          it.className = "item";
+          const mod = m.modules ? ` | modules: ${m.modules}` : "";
+          it.innerHTML = `
+            <div class="title">${escapeHtml(m.model)} <span class="pill">${escapeHtml(m.name || "")}</span></div>
+            <div class="meta">${escapeHtml(mod)}</div>
+            <div class="actions"><button class="primary" data-action="pickModel" data-model="${escapeHtml(m.model)}">Use model</button></div>
+          `;
+          root.appendChild(it);
+        });
+      }
+
+      $("btnSearchModels").addEventListener("click", () => {
+        const connId = $("ds_conn").value || $("login_conn").value;
+        const q = $("model_query").value;
+        if (!connId) {
+          setMsg($("dsMsg"), "err", "Select a connection first.");
+          return;
+        }
+        $("modelResults").innerHTML = `<div class="small">Searching...</div>`;
+        google.script.run
+          .withSuccessHandler((items) => renderModelResults(items))
+          .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
+          .api_searchModels({ connectionId: connId, query: q, limit: 20 });
+      });
+
+      function renderFieldResults(fields) {
+        const root = $("fieldResults");
+        root.innerHTML = "";
+        if (!fields || fields.length === 0) {
+          const d = document.createElement("div");
+          d.className = "small";
+          d.textContent = "No fields (or not allowed).";
+          root.appendChild(d);
+          return;
+        }
+
+        const current = new Set(
+          $("ds_fields")
+            .value.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        );
+
+        fields.forEach((f) => {
+          const it = document.createElement("div");
+          it.className = "item";
+          const rel = f.relation ? ` -> ${f.relation}` : "";
+          const checked = current.has(f.fieldName) ? "checked" : "";
+          it.innerHTML = `
+            <label style="margin:0;">
+              <input type="checkbox" data-action="toggleField" data-field="${escapeHtml(f.fieldName)}" ${checked} />
+              <span class="title">${escapeHtml(f.fieldName)}</span>
+              <span class="pill">${escapeHtml(f.type)}${escapeHtml(rel)}</span>
+            </label>
+            <div class="meta">${escapeHtml(f.label || "")}</div>
+          `;
+          root.appendChild(it);
+        });
+      }
+
+      $("btnLoadFields").addEventListener("click", () => {
+        const connId = $("ds_conn").value || $("login_conn").value;
+        const model = $("ds_model").value;
+        if (!connId) {
+          setMsg($("dsMsg"), "err", "Select a connection first.");
+          return;
+        }
+        if (!model) {
+          setMsg($("dsMsg"), "err", "Set a model first (or search and pick one).");
+          return;
+        }
+        $("fieldResults").innerHTML = `<div class="small">Loading fields...</div>`;
+        google.script.run
+          .withSuccessHandler((items) => renderFieldResults(items))
+          .withFailureHandler((e) => setMsg($("dsMsg"), "err", e.message || String(e)))
+          .api_getModelFields({ connectionId: connId, model });
+      });
+
       document.body.addEventListener("click", (ev) => {
         const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
+        const cb =
+          ev.target && ev.target.closest && ev.target.closest("input[type=checkbox][data-action]");
+        const action = btn ? btn.getAttribute("data-action") : cb ? cb.getAttribute("data-action") : null;
+        if (!action) return;
+
+        if (action === "toggleField") {
+          const field = cb.getAttribute("data-field");
+          const existing = $("ds_fields")
+            .value.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const set = new Set(existing);
+          if (cb.checked) set.add(field);
+          else set.delete(field);
+          $("ds_fields").value = Array.from(set).join(",");
+          return;
+        }
+
+        if (action === "pickModel") {
+          const model = btn.getAttribute("data-model");
+          $("ds_model").value = model;
+          // Auto-load fields after picking.
+          $("btnLoadFields").click();
+          return;
+        }
+
         if (!btn) return;
-        const action = btn.getAttribute("data-action");
+
         const id = btn.getAttribute("data-id");
         const msgEl = $("ds_item_msg_" + id);
         setMsg(msgEl, "", "");
@@ -397,4 +523,3 @@
     </script>
   </body>
 </html>
-

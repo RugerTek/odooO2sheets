@@ -2,7 +2,9 @@ import {
   api_createConnection,
   api_createDatasource,
   api_getBootstrap,
+  api_getModelFields,
   api_listSheets,
+  api_searchModels,
   api_setCredential,
   api_setDatasourceSchedule,
   api_updateConnection,
@@ -44,6 +46,7 @@ function showSidebar(): void {
 (globalThis as any).api_createDatasource = api_createDatasource;
 (globalThis as any).api_refreshDatasource = refreshDatasourceById;
 (globalThis as any).api_setDatasourceSchedule = api_setDatasourceSchedule;
+(globalThis as any).api_searchModels = api_searchModels;
+(globalThis as any).api_getModelFields = api_getModelFields;
 
 (globalThis as any).runSchedulerTick_ = runSchedulerTick_;
-

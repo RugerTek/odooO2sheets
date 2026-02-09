@@ -1,5 +1,12 @@
 import { authenticate, callKw } from "./odoo";
-import { getConnection, getCredential, getDatasource, touchUpdatedAt, upsertDatasource } from "./storage";
+import {
+  getConnection,
+  getCredential,
+  getDatasource,
+  getEphemeralCredential,
+  touchUpdatedAt,
+  upsertDatasource,
+} from "./storage";
 import { writeRows } from "./sheets";
 import { parseDomain } from "./util";
 
@@ -16,13 +23,14 @@ export function refreshDatasourceById(
     if (!conn) throw new Error("Connection not found.");
     const scope = conn.shareCredentials ? "DOCUMENT" : "USER";
     const cred = getCredential(conn.id, scope);
-    if (!cred) throw new Error("Missing credentials. Please login (and optionally remember credentials).");
+    const tmp = cred ? undefined : getEphemeralCredential(conn.id);
+    if (!cred && !tmp) throw new Error("Missing credentials. Please login (and optionally remember credentials).");
 
     const session = authenticate({
       odooUrl: conn.odooUrl,
       db: conn.odooDb,
-      username: cred.odooUsername,
-      password: cred.secret,
+      username: cred ? cred.odooUsername : tmp!.odooUsername,
+      password: cred ? cred.secret : tmp!.secret,
     });
 
     const domain = parseDomain(ds.domain);
@@ -70,4 +78,3 @@ export function refreshDatasourceById(
     void opts;
   }
 }
-

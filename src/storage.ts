@@ -4,6 +4,8 @@ import { nowIso } from "./util";
 const DOC_KEY = "o2sheets:doc:v1";
 const USER_CRED_PREFIX = "o2sheets:cred:user:v1:";
 const DOC_CRED_PREFIX = "o2sheets:cred:doc:v1:";
+const EPHEMERAL_CRED_PREFIX = "o2sheets:cred:tmp:v1:";
+const EPHEMERAL_TTL_SEC = 30 * 60;
 
 function getActiveSpreadsheetId(): string {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -112,8 +114,26 @@ export function deleteCredential(connectionId: string, scope: "USER" | "DOCUMENT
   props.deleteProperty(key);
 }
 
+export function saveEphemeralCredential(input: {
+  connectionId: string;
+  odooUsername: string;
+  secret: string;
+}): void {
+  const cache = CacheService.getUserCache();
+  const key = `${EPHEMERAL_CRED_PREFIX}${input.connectionId}`;
+  cache.put(key, JSON.stringify({ u: input.odooUsername, s: input.secret }), EPHEMERAL_TTL_SEC);
+}
+
+export function getEphemeralCredential(connectionId: string): { odooUsername: string; secret: string } | undefined {
+  const cache = CacheService.getUserCache();
+  const key = `${EPHEMERAL_CRED_PREFIX}${connectionId}`;
+  const raw = cache.get(key);
+  if (!raw) return undefined;
+  const parsed = JSON.parse(raw) as { u: string; s: string };
+  return { odooUsername: parsed.u, secret: parsed.s };
+}
+
 export function touchUpdatedAt<T extends { updatedAt: string }>(obj: T): T {
   obj.updatedAt = nowIso();
   return obj;
 }
-
