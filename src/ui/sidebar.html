@@ -115,7 +115,13 @@
         <label>Database</label>
         <input id="c_db" placeholder="odoo_db_name" />
         <div class="hint">
-          Tip rapido: en Odoo Online, suele ser el subdominio. Si no sabes el nombre exacto, lo sacamos antes de probar.
+          Tip: a veces NO es el subdominio. Si te dice "Database no encontrada", pega abajo el string psql (si lo tenes) y autocompleta.
+        </div>
+        <label>Autocompletar desde string psql (opcional)</label>
+        <textarea id="c_psql" placeholder='psql postgresql://user@host/dbname'></textarea>
+        <div class="row">
+          <button id="btnFillFromPsql">Autocompletar URL + DB</button>
+          <div class="small col" id="psqlOut"></div>
         </div>
         <div class="grid2">
           <div>
@@ -352,6 +358,25 @@
 
       $("btnReload").addEventListener("click", loadBootstrap);
       $("c_url").addEventListener("blur", suggestDbFromUrl);
+
+      function fillFromPsql() {
+        const raw = ($("c_psql").value || "").trim();
+        $("psqlOut").textContent = "";
+        if (!raw) return;
+        // Accept: "psql postgresql://user:pass@host:port/dbname" or just the URL part.
+        const m = raw.match(/postgres(?:ql)?:\\/\\/[^@]+@([^\\/\\s]+)\\/([^\\s?#]+)/i);
+        if (!m) {
+          $("psqlOut").textContent = "No pude leerlo. Debe contener postgresql://...@HOST/DB";
+          return;
+        }
+        const host = m[1];
+        const db = m[2];
+        $("c_url").value = `https://${host}`;
+        $("c_db").value = db;
+        $("psqlOut").textContent = "Listo. Ahora guarda la connection.";
+      }
+
+      $("btnFillFromPsql").addEventListener("click", fillFromPsql);
 
       $("btnTestUrl").addEventListener("click", () => {
         const url = $("c_url").value || (state.connections[0] && state.connections[0].odooUrl) || "";

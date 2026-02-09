@@ -122,6 +122,15 @@ export function authenticate(params: {
   }
   if (body?.error) {
     const msg = body?.error?.data?.message || body?.error?.message || "Unknown Odoo error";
+    const lower = String(msg).toLowerCase();
+    if (lower.includes("database not found")) {
+      throw new Error(
+        `Database no encontrada: "${params.db}". En Odoo Online / Odoo.sh el Database no siempre es el subdominio. Si tenes un link tipo psql postgresql://...@HOST/DB, el Database es lo que va despues de la ultima '/': DB.`
+      );
+    }
+    if (lower.includes("access denied") || lower.includes("wrong login") || lower.includes("authentication")) {
+      throw new Error("Usuario o password incorrectos. Proba con el mismo usuario exacto que usas en el navegador.");
+    }
     throw new Error(`Login rechazado por Odoo. Detalle: ${msg}`);
   }
   const uid = body?.result?.uid;
