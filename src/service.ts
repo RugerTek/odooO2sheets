@@ -46,6 +46,9 @@ export function api_createConnection(input: {
 }): Connection {
   const ctx = getCurrentContext();
   const odooUrl = normalizeOdooUrl(input.odooUrl);
+  // Basic reachability check early so the user gets feedback at "Save connection" time.
+  const reachable = getVersionInfo(odooUrl);
+  if (!reachable?.ok) throw new Error(reachable?.hint || "Odoo URL not reachable. Check the URL.");
   const host = (() => {
     try {
       return new URL(odooUrl).hostname || "odoo";

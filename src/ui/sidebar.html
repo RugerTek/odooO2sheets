@@ -107,21 +107,17 @@
           <div class="pill">New connection</div>
         </div>
         <div class="hint" style="margin-top: 8px;">
-          Nota: ya no necesitás completar Name/Title. Solo URL y Database.
+          Completa solo 2 cosas: URL y Database.
         </div>
-        <label>Web Address (public)</label>
-        <input id="c_url" placeholder="https://your-odoo.example.com" />
-        <div class="hint">Ejemplo que pasaste: <span class="kbd">https://unika-sa-motor-haus.odoo.com</span></div>
-        <label>Database</label>
-        <input id="c_db" placeholder="odoo_db_name" />
+        <label>Odoo URL (publica)</label>
+        <input id="c_url" placeholder="https://tu-instancia.odoo.com" />
         <div class="hint">
-          Tip: a veces NO es el subdominio. Si te dice "Database no encontrada", pega abajo el string psql (si lo tenes) y autocompleta.
+          Ejemplos: <span class="kbd">https://xxxxx.odoo.com</span> o <span class="kbd">https://xxxxx.dev.odoo.com</span>
         </div>
-        <label>Autocompletar desde string psql (opcional)</label>
-        <textarea id="c_psql" placeholder='psql postgresql://user@host/dbname'></textarea>
-        <div class="row">
-          <button id="btnFillFromPsql">Autocompletar URL + DB</button>
-          <div class="small col" id="psqlOut"></div>
+        <label>Database (nombre exacto)</label>
+        <input id="c_db" placeholder="ej: unika-sa-motor-haus1-main-25276166" />
+        <div class="hint">
+          Si te aparece “Database no encontrada”, significa que este valor no coincide con el de esa URL.
         </div>
         <div class="grid2">
           <div>
@@ -135,6 +131,7 @@
           <button class="primary" id="btnCreateConn">Save connection</button>
           <button id="btnReload">Reload</button>
         </div>
+        <div id="connMsg"></div>
       </div>
 
       <div class="card">
@@ -359,25 +356,6 @@
       $("btnReload").addEventListener("click", loadBootstrap);
       $("c_url").addEventListener("blur", suggestDbFromUrl);
 
-      function fillFromPsql() {
-        const raw = ($("c_psql").value || "").trim();
-        $("psqlOut").textContent = "";
-        if (!raw) return;
-        // Accept: "psql postgresql://user:pass@host:port/dbname" or just the URL part.
-        const m = raw.match(/postgres(?:ql)?:\\/\\/[^@]+@([^\\/\\s]+)\\/([^\\s?#]+)/i);
-        if (!m) {
-          $("psqlOut").textContent = "No pude leerlo. Debe contener postgresql://...@HOST/DB";
-          return;
-        }
-        const host = m[1];
-        const db = m[2];
-        $("c_url").value = `https://${host}`;
-        $("c_db").value = db;
-        $("psqlOut").textContent = "Listo. Ahora guarda la connection.";
-      }
-
-      $("btnFillFromPsql").addEventListener("click", fillFromPsql);
-
       $("btnTestUrl").addEventListener("click", () => {
         const url = $("c_url").value || (state.connections[0] && state.connections[0].odooUrl) || "";
         if (!url) {
@@ -402,10 +380,21 @@
       });
 
       $("btnCreateConn").addEventListener("click", () => {
-        setMsg($("dsMsg"), "", "");
+        setMsg($("connMsg"), "", "");
+        const url = ($("c_url").value || "").trim();
+        const db = ($("c_db").value || "").trim();
+        if (!url) {
+          setMsg($("connMsg"), "err", "Falta la URL.");
+          return;
+        }
+        if (!db) {
+          setMsg($("connMsg"), "err", "Falta el Database.");
+          return;
+        }
+        $("btnCreateConn").disabled = true;
         google.script.run
           .withSuccessHandler((conn) => {
-            setMsg($("loginMsg"), "ok", "Connection saved. Ahora hace Login.");
+            setMsg($("connMsg"), "ok", "Connection guardada. Ahora hace Login (abajo).");
             loadBootstrap();
             setTimeout(() => {
               try {
@@ -413,8 +402,12 @@
                 $("ds_conn").value = conn.id;
               } catch (_) {}
             }, 200);
+            $("btnCreateConn").disabled = false;
           })
-          .withFailureHandler((e) => setMsg($("loginMsg"), "err", e.message || String(e)))
+          .withFailureHandler((e) => {
+            setMsg($("connMsg"), "err", e.message || String(e));
+            $("btnCreateConn").disabled = false;
+          })
           .api_createConnection({
             odooUrl: $("c_url").value,
             odooDb: $("c_db").value,
