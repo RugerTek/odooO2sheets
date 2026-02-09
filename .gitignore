@@ -1,0 +1,12 @@
+﻿node_modules/
+.env
+.DS_Store
+Thumbs.db
+
+# Apps Script / clasp
+.clasp.json
+.claspignore
+
+# Build artifacts
+build/
+dist/
