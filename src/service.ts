@@ -37,23 +37,43 @@ export function api_testOdooUrl(input: { odooUrl: string }): any {
 }
 
 export function api_createConnection(input: {
-  name: string;
-  title: string;
+  name?: string;
+  title?: string;
   odooUrl: string;
   odooDb: string;
   storeConnections: boolean;
   shareCredentials: boolean;
 }): Connection {
   const ctx = getCurrentContext();
-  const name = normalizeConnectionName(input.name);
-  const existing = listConnections().find((c) => c.name === name);
-  if (existing) throw new Error(`Connection name already exists: ${name}`);
+  const odooUrl = normalizeOdooUrl(input.odooUrl);
+  const host = (() => {
+    try {
+      return new URL(odooUrl).hostname || "odoo";
+    } catch {
+      return "odoo";
+    }
+  })();
+  const baseTitle = (input.title || "").trim() || host;
+
+  const toAutoName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  let nameRaw = (input.name || "").trim();
+  if (!nameRaw) nameRaw = toAutoName(host);
+  if (!nameRaw) nameRaw = "main";
+
+  // Ensure unique even if user doesn't care about names.
+  let name = normalizeConnectionName(nameRaw);
+  const existingNames = new Set(listConnections().map((c) => c.name));
+  if (existingNames.has(name)) {
+    let i = 2;
+    while (existingNames.has(`${name}${i}`)) i += 1;
+    name = `${name}${i}`;
+  }
 
   const conn: Connection = {
     id: uuidV4(),
     name,
-    title: input.title.trim() || name,
-    odooUrl: normalizeOdooUrl(input.odooUrl),
+    title: baseTitle,
+    odooUrl,
     odooDb: input.odooDb.trim(),
     storeConnections: Boolean(input.storeConnections),
     shareCredentials: Boolean(input.shareCredentials),

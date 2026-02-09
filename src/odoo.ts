@@ -88,7 +88,11 @@ function extractCookie(resp: GoogleAppsScript.URL_Fetch.HTTPResponse): string | 
 function parseJson(resp: GoogleAppsScript.URL_Fetch.HTTPResponse): any {
   const text = resp.getContentText();
   if (!text) return {};
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { __nonJson: true, __preview: text.slice(0, 300) };
+  }
 }
 
 export function authenticate(params: {
@@ -108,15 +112,35 @@ export function authenticate(params: {
   const resp = jsonRpc(endpoint, payload);
   const body = parseJson(resp);
   if (resp.getResponseCode() >= 400) {
-    const msg = body?.error?.data?.message || body?.error?.message || resp.getContentText();
-    throw new Error(`Odoo authenticate failed (${resp.getResponseCode()}): ${msg}`);
+    const msg =
+      body?.error?.data?.message ||
+      body?.error?.message ||
+      (body?.__nonJson ? body.__preview : resp.getContentText());
+    throw new Error(
+      `No se pudo conectar a Odoo (${resp.getResponseCode()}). Verifica URL y Database. Detalle: ${msg}`
+    );
+  }
+  if (body?.error) {
+    const msg = body?.error?.data?.message || body?.error?.message || "Unknown Odoo error";
+    throw new Error(`Login rechazado por Odoo. Detalle: ${msg}`);
   }
   const uid = body?.result?.uid;
-  if (typeof uid !== "number") throw new Error("Odoo authenticate failed: missing uid.");
+  // Odoo returns uid=false on wrong credentials (and no cookie).
+  if (uid === false || uid === null || uid === undefined) {
+    throw new Error(
+      "Login fallido. Revisá estos 3 puntos: 1) Database (en Odoo Online suele ser el subdominio) 2) Usuario 3) Password. Tip: si en el navegador inicias sesion con 'admin' (sin @), probalo asi aqui tambien."
+    );
+  }
+  if (typeof uid !== "number") {
+    const preview = body?.__nonJson ? ` Preview: ${body.__preview}` : "";
+    throw new Error(`Respuesta inesperada de Odoo (no devolvio uid).${preview}`);
+  }
   const cookie = extractCookie(resp);
   if (!cookie) {
     // Some setups may not return cookie; still allow but later calls might fail.
-    throw new Error("Odoo authenticate failed: missing session cookie (session_id).");
+    throw new Error(
+      "Login OK pero Odoo no devolvio cookie de sesion (session_id). Esto suele indicar un proxy o bloqueo. Proba nuevamente o revisa configuracion de la instancia."
+    );
   }
   return { odooUrl, db: params.db, username: params.username, uid, cookie };
 }
