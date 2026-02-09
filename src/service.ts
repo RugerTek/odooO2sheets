@@ -399,6 +399,83 @@ export function api_createDatasource(input: {
   return ds;
 }
 
+export function api_updateDatasource(input: {
+  datasourceId: string;
+  sheetName: string;
+  connectionId: string;
+  odooModel: string;
+  fields?: Array<{ fieldName: string; label?: string; order: number }>;
+  limit: number;
+  domain?: string;
+  orderBy?: string;
+  writeMode: "REPLACE" | "APPEND";
+  header: boolean;
+}): Datasource {
+  const existing = getDatasource(input.datasourceId);
+  if (!existing) throw new Error("Datasource not found.");
+
+  const conn = getConnection(input.connectionId);
+  if (!conn) throw new Error("Connection not found.");
+
+  const model = input.odooModel.trim();
+  if (!model) throw new Error("Odoo model is required (e.g. res.partner).");
+
+  const chosen = (input.fields || []).filter((f) => f && f.fieldName);
+  if (chosen.length === 0) throw new Error("At least one field is required.");
+
+  // Validate domain JSON now (if present).
+  parseDomain(input.domain);
+
+  const dsFields: DatasourceField[] = chosen
+    .map((f) => ({
+      fieldName: String(f.fieldName),
+      label: (f.label && String(f.label)) || String(f.fieldName),
+      order: Number.isFinite(f.order as any) ? Number(f.order) : 0,
+    }))
+    .sort((a, b) => a.order - b.order);
+
+  const sheetName = input.sheetName.trim();
+  if (!sheetName) throw new Error("Sheet name is required.");
+
+  const changedConfig =
+    existing.sheetName !== sheetName ||
+    existing.connectionId !== input.connectionId ||
+    existing.odooModel !== model ||
+    (existing.domain || "") !== ((input.domain || "").trim() || "") ||
+    (existing.orderBy || "") !== ((input.orderBy || "").trim() || "") ||
+    Number(existing.limit) !== Math.max(1, Number(input.limit) || 80) ||
+    existing.writeMode !== input.writeMode ||
+    Boolean(existing.header) !== Boolean(input.header) ||
+    JSON.stringify(existing.fields.map((f) => f.fieldName)) !== JSON.stringify(dsFields.map((f) => f.fieldName));
+
+  const connChanged = existing.connectionId !== input.connectionId;
+
+  existing.sheetName = sheetName;
+  existing.connectionId = input.connectionId;
+  existing.odooModel = model;
+  existing.fields = dsFields;
+  existing.domain = (input.domain || "").trim() || undefined;
+  existing.orderBy = (input.orderBy || "").trim() || undefined;
+  existing.limit = Math.max(1, Number(input.limit) || 80);
+  existing.writeMode = input.writeMode;
+  existing.header = Boolean(input.header);
+
+  // If connection changes, disable scheduler to avoid silent auth failures.
+  if (connChanged && existing.schedulerEnabled) {
+    existing.schedulerEnabled = false;
+    existing.schedulerConfig = undefined;
+  }
+
+  // Clear last run if the extraction definition changed.
+  if (changedConfig) {
+    existing.lastRun = undefined;
+  }
+
+  touchUpdatedAt(existing);
+  upsertDatasource(existing);
+  return existing;
+}
+
 export function api_setDatasourceSchedule(input: {
   datasourceId: string;
   enabled: boolean;

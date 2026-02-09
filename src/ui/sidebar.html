@@ -209,6 +209,10 @@
         <div class="row" style="margin-top: 8px;">
           <button class="primary" id="btnCreateDs">Guardar extraccion</button>
         </div>
+        <div class="row" id="editBar" style="display:none; margin-top: 8px; align-items:center; justify-content:space-between;">
+          <div class="hint" id="editLabel"></div>
+          <button class="danger" id="btnCancelEdit" type="button">Cancelar edicion</button>
+        </div>
         <div id="dsMsg"></div>
       </div>
 
@@ -220,11 +224,12 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09j";
+      const UI_BUILD = "2026-02-09k";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
       let chosenModel = { model: "", name: "" };
+      let editingDatasourceId = "";
 
       function setStatus(kind, text, detail) {
         const bar = $("statusBar");
@@ -365,6 +370,23 @@
         }
       }
 
+      function setEditingUI(ds) {
+        const bar = $("editBar");
+        const label = $("editLabel");
+        const btn = $("btnCreateDs");
+        if (!bar || !label || !btn) return;
+        if (!ds) {
+          editingDatasourceId = "";
+          bar.style.display = "none";
+          btn.textContent = "Guardar extraccion";
+          return;
+        }
+        editingDatasourceId = ds.id;
+        bar.style.display = "flex";
+        label.textContent = `Editando: ${ds.sheetName} | ${ds.odooModel}`;
+        btn.textContent = "Guardar cambios";
+      }
+
       function render() {
         // Connections list
         const cl = $("connectionsList");
@@ -432,6 +454,7 @@
               <div class="meta">Ultima ejecucion: ${escapeHtml(last)}</div>
                <div class="row" style="margin-top:8px;">
                  <button class="primary" data-action="refresh" data-id="${ds.id}">Refresh</button>
+                 <button data-action="edit" data-id="${ds.id}">Editar</button>
                  <button data-action="schedule" data-id="${ds.id}">Timer</button>
                  <button class="danger" data-action="delete" data-id="${ds.id}">Borrar</button>
                </div>
@@ -602,6 +625,7 @@
             selectedFields = [];
             updateChosenModelUI();
             updateChosenFieldsUI();
+            setEditingUI(null);
             setStatus("ok", "Seleccion limpiada.");
           },
           (e) => {
@@ -609,6 +633,11 @@
             setStatus("err", "No se pudo limpiar.", msg);
           }
         );
+      });
+
+      $("btnCancelEdit").addEventListener("click", () => {
+        setEditingUI(null);
+        setMsg($("dsMsg"), "ok", "Edicion cancelada.");
       });
 
       $("btnTestUrl").addEventListener("click", () => {
@@ -706,11 +735,13 @@
 
         const fieldArr = selectedFields.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }));
         $("btnCreateDs").disabled = true;
-        setStatus("info", "Guardando extraccion...", `${sheet} | ${model}`);
+        const isEdit = Boolean(editingDatasourceId);
+        setStatus("info", isEdit ? "Guardando cambios..." : "Guardando extraccion...", `${sheet} | ${model}`);
         runServer(
-          "api_createDatasource",
+          isEdit ? "api_updateDatasource" : "api_createDatasource",
           [
             {
+              datasourceId: editingDatasourceId,
               sheetName: sheet,
               connectionId: connId,
               odooModel: model,
@@ -723,14 +754,15 @@
             },
           ],
           () => {
-            setMsg($("dsMsg"), "ok", "Extraccion guardada. Ahora podes apretar Refresh en la lista de abajo.");
-            setStatus("ok", "Extraccion guardada.");
+            setMsg($("dsMsg"), "ok", isEdit ? "Cambios guardados." : "Extraccion guardada. Ahora podes apretar Refresh en la lista de abajo.");
+            setStatus("ok", isEdit ? "Cambios guardados." : "Extraccion guardada.");
             $("btnCreateDs").disabled = false;
+            setEditingUI(null);
             loadBootstrap();
           },
           (e) => {
             setMsg($("dsMsg"), "err", (e && (e.message || String(e))) || "Error");
-            setStatus("err", "No se pudo guardar la extraccion.", e && (e.message || String(e)));
+            setStatus("err", isEdit ? "No se pudieron guardar los cambios." : "No se pudo guardar la extraccion.", e && (e.message || String(e)));
             $("btnCreateDs").disabled = false;
           }
         );
@@ -756,6 +788,63 @@
             (e) => {
               const msg = (e && (e.message || String(e))) || "Error";
               setStatus("err", "No pude abrir el timer.", msg);
+            }
+          );
+          return;
+        }
+
+        if (action === "edit") {
+          const id = btn.getAttribute("data-id");
+          const ds = (state.datasources || []).find((x) => x.id === id);
+          if (!ds) return setStatus("err", "No encontre la extraccion para editar.", `Datasource: ${id}`);
+          setStatus("info", "Cargando extraccion para editar...", `${ds.sheetName} | ${ds.odooModel}`);
+
+          // Populate form.
+          try {
+            $("ds_sheet").value = ds.sheetName;
+          } catch (_) {}
+          try {
+            $("ds_conn").value = ds.connectionId;
+          } catch (_) {}
+          $("ds_limit").value = String(ds.limit || 80);
+          $("ds_order").value = ds.orderBy || "";
+          $("ds_domain").value = ds.domain || "";
+          $("ds_mode").value = ds.writeMode || "REPLACE";
+          $("ds_header").checked = Boolean(ds.header);
+
+          // Sync draft (so dialogs open with current selection).
+          const connId = ds.connectionId;
+          const model = ds.odooModel;
+          const modelName = model;
+          const fields = (ds.fields || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((f, idx) => ({
+            fieldName: f.fieldName,
+            label: f.label || f.fieldName,
+            order: idx,
+            type: f.type || "",
+          }));
+
+          runServer(
+            "api_setDraftModel",
+            [{ connectionId: connId, model, modelName }],
+            (draft1) => {
+              applyDraft(draft1);
+              runServer(
+                "api_setDraftFields",
+                [{ connectionId: connId, model, fields }],
+                (draft2) => {
+                  applyDraft(draft2);
+                  setEditingUI(ds);
+                  setStatus("ok", "Listo para editar. Cambia lo que quieras y toca Guardar cambios.");
+                },
+                (e) => {
+                  const msg = (e && (e.message || String(e))) || "Error";
+                  setStatus("err", "No pude cargar las columnas para editar.", msg);
+                }
+              );
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude cargar la tabla para editar.", msg);
             }
           );
           return;
