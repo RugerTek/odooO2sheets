@@ -10,22 +10,52 @@ export interface OdooSession {
 
 export function getVersionInfo(odooUrlInput: string): any {
   const odooUrl = normalizeOdooUrl(odooUrlInput);
-  const url = `${odooUrl}/web/webclient/version_info`;
-  const resp = UrlFetchApp.fetch(url, {
-    method: "get",
-    muteHttpExceptions: true,
-    followRedirects: true,
-    headers: { Accept: "application/json" },
-  });
-  const code = resp.getResponseCode();
-  const text = resp.getContentText() || "";
-  if (code >= 400) throw new Error(`Odoo URL check failed (${code}). Is the instance publicly accessible?`);
-  try {
-    return JSON.parse(text);
-  } catch {
-    // Some proxies return HTML; still return a small hint.
-    return { raw: text.slice(0, 200) };
+  const checks: Array<{ url: string; code: number; contentType?: string }> = [];
+
+  function tryGet(path: string, accept?: string): { code: number; text: string; contentType?: string } {
+    const url = `${odooUrl}${path}`;
+    const resp = UrlFetchApp.fetch(url, {
+      method: "get",
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: accept ? { Accept: accept } : undefined,
+    });
+    const code = resp.getResponseCode();
+    const hdrs = resp.getAllHeaders() as Record<string, string | string[]>;
+    const ct = String(hdrs["Content-Type"] || hdrs["content-type"] || "");
+    checks.push({ url, code, contentType: ct });
+    return { code, text: resp.getContentText() || "", contentType: ct };
   }
+
+  // Best-effort reachability test. Some Odoo setups may not like JSON Accept headers.
+  const v = tryGet("/web/webclient/version_info", "application/json");
+  if (v.code >= 200 && v.code < 400) {
+    try {
+      const parsed = JSON.parse(v.text);
+      return { ok: true, kind: "version_info", checks, version: parsed };
+    } catch {
+      return { ok: true, kind: "version_info_nonjson", checks, preview: v.text.slice(0, 200) };
+    }
+  }
+
+  const login = tryGet("/web/login");
+  if (login.code >= 200 && login.code < 400) {
+    return { ok: true, kind: "web_login", checks };
+  }
+
+  const root = tryGet("/");
+  if (root.code >= 200 && root.code < 400) {
+    return { ok: true, kind: "root", checks };
+  }
+
+  // If we got here, we couldn't reach any expected endpoint.
+  return {
+    ok: false,
+    kind: "unreachable",
+    checks,
+    hint:
+      "Verify the URL is correct (for Odoo Online it should end with .odoo.com). If your site is not public, it won't work.",
+  };
 }
 
 function jsonRpc(url: string, payload: unknown, cookie?: string): GoogleAppsScript.URL_Fetch.HTTPResponse {

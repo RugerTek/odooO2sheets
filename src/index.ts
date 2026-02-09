@@ -11,14 +11,12 @@ import {
   api_updateConnection,
   refreshDatasourceById,
 } from "./service";
-import { ensureSchedulerTrigger, runSchedulerTick_ } from "./scheduler";
+import { runSchedulerTick_ } from "./scheduler";
 
 function onOpen(): void {
   SpreadsheetApp.getUi()
     .createMenu("Odoo O2Sheets")
     .addItem("Open sidebar", "showSidebar")
-    .addSeparator()
-    .addItem("Run scheduler tick (debug)", "runSchedulerTick_")
     .addToUi();
 }
 
@@ -27,7 +25,6 @@ function onInstall(): void {
 }
 
 function showSidebar(): void {
-  ensureSchedulerTrigger();
   const html = HtmlService.createTemplateFromFile("ui/sidebar")
     .evaluate()
     .setTitle("Odoo O2Sheets");

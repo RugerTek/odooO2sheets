@@ -31,7 +31,9 @@ export function api_getBootstrap(): {
 }
 
 export function api_testOdooUrl(input: { odooUrl: string }): any {
-  return getVersionInfo(input.odooUrl);
+  const res = getVersionInfo(input.odooUrl);
+  if (!res?.ok) throw new Error(res?.hint || "Odoo URL not reachable. Check the URL.");
+  return res;
 }
 
 export function api_createConnection(input: {

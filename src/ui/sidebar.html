@@ -369,11 +369,16 @@
         $("urlTestOut").textContent = "Probando...";
         google.script.run
           .withSuccessHandler((res) => {
-            const v = res && (res.server_version || res.server_version_info || res.version || "");
-            $("urlTestOut").textContent = v ? `OK (version: ${JSON.stringify(v)})` : "OK";
+            const checks = (res.checks || []).map((c) => `${c.code}`).join(", ");
+            const v = res && res.version;
+            const vTxt = v ? ` | version: ${JSON.stringify(v)}` : "";
+            $("urlTestOut").textContent = `OK${vTxt}${checks ? " | codes: " + checks : ""}`;
           })
           .withFailureHandler((e) => {
-            $("urlTestOut").textContent = "Error: " + (e.message || String(e));
+            $("urlTestOut").textContent =
+              "Error: " +
+              (e.message || String(e)) +
+              " (verifica que la URL termine en .odoo.com y no tenga espacios)";
           })
           .api_testOdooUrl({ odooUrl: url });
       });
@@ -381,9 +386,15 @@
       $("btnCreateConn").addEventListener("click", () => {
         setMsg($("dsMsg"), "", "");
         google.script.run
-          .withSuccessHandler(() => {
-            setMsg($("loginMsg"), "ok", "Connection saved.");
+          .withSuccessHandler((conn) => {
+            setMsg($("loginMsg"), "ok", "Connection saved. Ahora hace Login.");
             loadBootstrap();
+            setTimeout(() => {
+              try {
+                $("login_conn").value = conn.id;
+                $("ds_conn").value = conn.id;
+              } catch (_) {}
+            }, 200);
           })
           .withFailureHandler((e) => setMsg($("loginMsg"), "err", e.message || String(e)))
           .api_createConnection({
@@ -399,6 +410,10 @@
       $("btnLogin").addEventListener("click", () => {
         setMsg($("loginMsg"), "", "");
         const connId = $("login_conn").value;
+        if (!connId) {
+          setMsg($("loginMsg"), "err", "Primero selecciona una Connection (o crea una y guardala).");
+          return;
+        }
         google.script.run
           .withSuccessHandler((res) => {
             setMsg($("loginMsg"), "ok", `Login OK (uid=${res.uid}). Advanced=${res.canUseAdvanced}`);
@@ -415,6 +430,18 @@
 
       $("btnCreateDs").addEventListener("click", () => {
         setMsg($("dsMsg"), "", "");
+        if (!$("ds_conn").value) {
+          setMsg($("dsMsg"), "err", "Selecciona una Connection.");
+          return;
+        }
+        if (!$("ds_sheet").value) {
+          setMsg($("dsMsg"), "err", "Selecciona una Sheet.");
+          return;
+        }
+        if (!$("ds_model").value) {
+          setMsg($("dsMsg"), "err", "Selecciona un modelo (Search + Use model).");
+          return;
+        }
         const fieldArr =
           selectedFields.length > 0
             ? selectedFields.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }))
@@ -466,7 +493,7 @@
         const connId = $("ds_conn").value || $("login_conn").value;
         const q = $("model_query").value;
         if (!connId) {
-          setMsg($("dsMsg"), "err", "Select a connection first.");
+          setMsg($("dsMsg"), "err", "Primero selecciona una Connection y hace Login.");
           return;
         }
         $("modelResults").innerHTML = `<div class="small">Searching...</div>`;
