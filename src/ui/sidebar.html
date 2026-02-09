@@ -220,7 +220,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09i";
+      const UI_BUILD = "2026-02-09j";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -430,15 +430,16 @@
               <div class="meta">Campos: ${escapeHtml(ds.fields.map((f) => f.fieldName).join(", "))}</div>
               <div class="meta">${escapeHtml(auto)} | ${escapeHtml(autoMeta)}</div>
               <div class="meta">Ultima ejecucion: ${escapeHtml(last)}</div>
-              <div class="row" style="margin-top:8px;">
-                <button class="primary" data-action="refresh" data-id="${ds.id}">Refresh</button>
-                <button data-action="schedule" data-id="${ds.id}">Timer</button>
-              </div>
-              <div id="ds_item_msg_${ds.id}"></div>
-            `;
-            dl.appendChild(it);
-          });
-        }
+               <div class="row" style="margin-top:8px;">
+                 <button class="primary" data-action="refresh" data-id="${ds.id}">Refresh</button>
+                 <button data-action="schedule" data-id="${ds.id}">Timer</button>
+                 <button class="danger" data-action="delete" data-id="${ds.id}">Borrar</button>
+               </div>
+               <div id="ds_item_msg_${ds.id}"></div>
+             `;
+             dl.appendChild(it);
+           });
+         }
 
         updateChosenModelUI();
         updateChosenFieldsUI();
@@ -781,6 +782,28 @@
               btn.disabled = false;
             },
             { timeoutMs: 120000 }
+          );
+        }
+
+        if (action === "delete") {
+          const id = btn.getAttribute("data-id");
+          const ok = confirm("Borrar esta extraccion?\n\nEsto solo borra la configuracion. No borra la hoja ni los datos.");
+          if (!ok) return;
+          btn.disabled = true;
+          setStatus("info", "Borrando extraccion...", `Datasource: ${id}`);
+          runServer(
+            "api_deleteDatasource",
+            [{ datasourceId: id }],
+            () => {
+              setStatus("ok", "Extraccion borrada.");
+              btn.disabled = false;
+              loadBootstrap();
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude borrar la extraccion.", msg);
+              btn.disabled = false;
+            }
           );
         }
       });

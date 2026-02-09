@@ -68,6 +68,12 @@ export function upsertDatasource(ds: Datasource): void {
   saveDocState(state);
 }
 
+export function deleteDatasource(datasourceId: string): void {
+  const state = loadDocState();
+  state.datasources = state.datasources.filter((d) => d.id !== datasourceId);
+  saveDocState(state);
+}
+
 export function getDatasource(id: string): Datasource | undefined {
   return loadDocState().datasources.find((d) => d.id === id);
 }

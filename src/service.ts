@@ -3,6 +3,7 @@ import {
   getCredential,
   getCurrentContext,
   getDatasource,
+  deleteDatasource,
   getDraftExtraction,
   getEphemeralCredential,
   listConnections,
@@ -424,6 +425,22 @@ export function api_setDatasourceSchedule(input: {
   touchUpdatedAt(ds);
   upsertDatasource(ds);
   return ds;
+}
+
+// google.script.run only exposes top-level functions by name.
+// Keep a stable API name for the UI.
+export function api_refreshDatasource(
+  datasourceId: string,
+  opts?: { automated?: boolean }
+): { rowsFetched: number } {
+  return refreshDatasourceById(datasourceId, opts);
+}
+
+export function api_deleteDatasource(input: { datasourceId: string }): { ok: true } {
+  const ds = getDatasource(input.datasourceId);
+  if (!ds) throw new Error("Datasource not found.");
+  deleteDatasource(ds.id);
+  return { ok: true };
 }
 
 export { refreshDatasourceById };

@@ -1,6 +1,7 @@
 import {
   api_createConnection,
   api_createDatasource,
+  api_deleteDatasource,
   api_clearDraftExtraction,
   api_getBootstrap,
   api_getDraftExtraction,
@@ -8,6 +9,7 @@ import {
   api_listModules,
   api_listSheets,
   api_previewRows,
+  api_refreshDatasource,
   api_searchModels,
   api_setDraftFields,
   api_setDraftModel,
@@ -50,8 +52,9 @@ function showSidebar(): void {
 (globalThis as any).api_updateConnection = api_updateConnection;
 (globalThis as any).api_setCredential = api_setCredential;
 (globalThis as any).api_createDatasource = api_createDatasource;
-(globalThis as any).api_refreshDatasource = refreshDatasourceById;
+(globalThis as any).api_refreshDatasource = api_refreshDatasource;
 (globalThis as any).api_setDatasourceSchedule = api_setDatasourceSchedule;
+(globalThis as any).api_deleteDatasource = api_deleteDatasource;
 (globalThis as any).api_searchModels = api_searchModels;
 (globalThis as any).api_getModelFields = api_getModelFields;
 (globalThis as any).api_previewRows = api_previewRows;
