@@ -147,23 +147,23 @@
       }
       .menuWrap { position: relative; display: inline-flex; gap: 6px; }
       .menuBtn { width: 34px; height: 34px; padding: 0; border-radius: 10px; }
-      .menu {
-        position: absolute;
-        top: 38px;
-        right: 0;
-        z-index: 50;
+
+      /* Floating menu (fixed) to avoid clipping in the Sheets sidebar iframe. */
+      .floatMenu {
+        position: fixed;
+        z-index: 1000;
         min-width: 190px;
-        max-width: calc(100vw - 32px);
+        max-width: calc(100vw - 16px);
+        max-height: min(360px, calc(100vh - 16px));
+        overflow: auto;
         border: 1px solid var(--line);
         border-radius: 12px;
         background: #fff;
-        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.14);
         padding: 6px;
         overflow-wrap: anywhere;
+        display: none;
       }
-      .menu.up { top: auto; bottom: 38px; }
-      .menu.shiftRight { left: 0; right: auto; }
-      .menu.shiftLeft { right: 0; left: auto; }
       .menuItem {
         width: 100%;
         text-align: left;
@@ -419,10 +419,11 @@
       </div>
       </div>
     </div>
+    <div id="floatMenu" class="floatMenu" role="menu" aria-hidden="true"></div>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10j";
+      const UI_BUILD = "2026-02-10k";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -433,8 +434,7 @@
       let editingConnId = "";
       let currentView = "extracts"; // extracts | connections | help
       let currentDatasourceId = "";
-      let openMenuForDatasourceId = "";
-      let openMenuForConnectionId = "";
+      let floatMenuOpenFor = ""; // conn:<id> | ds:<id>
       let sheetNames = [];
       let extractsScreen = "list"; // list | editor
 
@@ -767,8 +767,7 @@
         }
 
         currentDatasourceId = "";
-        openMenuForDatasourceId = "";
-        openMenuForConnectionId = "";
+        closeFloatMenu();
 
         try { $("editorTitle").textContent = "Nueva extraccion"; } catch (_) {}
         try { $("editorHint").textContent = "Configura hoja, conexion, tabla y columnas."; } catch (_) {}
@@ -805,7 +804,7 @@
 
       function setDatasourceDetail(id) {
         currentDatasourceId = id || "";
-        openMenuForDatasourceId = "";
+        closeFloatMenu();
         render();
       }
 
@@ -853,27 +852,58 @@
         }
       }
 
-      function adjustMenusInViewport() {
-        try {
-          const vh = window.innerHeight || 0;
-          const vw = window.innerWidth || 0;
+      function closeFloatMenu() {
+        const m = $("floatMenu");
+        if (!m) return;
+        m.style.display = "none";
+        m.setAttribute("aria-hidden", "true");
+        m.innerHTML = "";
+        floatMenuOpenFor = "";
+      }
 
-          // Reset.
-          document.querySelectorAll(".menu").forEach((m) => m.classList.remove("up", "shiftRight", "shiftLeft"));
+      function openFloatMenu(anchorEl, key, items) {
+        const m = $("floatMenu");
+        if (!m || !anchorEl) return;
+        if (floatMenuOpenFor === key) return closeFloatMenu();
 
-          // Pass 1: vertical.
-          document.querySelectorAll(".menu").forEach((m) => {
-            const r = m.getBoundingClientRect();
-            if (vh && r.bottom > vh - 8) m.classList.add("up");
-          });
+        m.innerHTML = (items || [])
+          .map((it) => {
+            const cls = "menuItem" + (it.danger ? " danger" : "");
+            return `<button class="${cls}" type="button" data-action="${escapeHtml(it.action)}" data-id="${escapeHtml(it.id)}">${escapeHtml(it.label)}</button>`;
+          })
+          .join("");
 
-          // Pass 2: horizontal (after vertical class may change layout).
-          document.querySelectorAll(".menu").forEach((m) => {
-            const r = m.getBoundingClientRect();
-            if (vw && r.left < 8) m.classList.add("shiftRight");
-            else if (vw && r.right > vw - 8) m.classList.add("shiftLeft");
-          });
-        } catch (_) {}
+        // Park offscreen to avoid flicker at (0,0).
+        m.style.left = "-2000px";
+        m.style.top = "-2000px";
+        m.style.display = "block";
+        m.setAttribute("aria-hidden", "false");
+        floatMenuOpenFor = key;
+
+        // Position (clamped) inside the sidebar viewport.
+        setTimeout(() => {
+          try {
+            const ar = anchorEl.getBoundingClientRect();
+            // Ensure we have a measurable rect for menu after content paint.
+            const mr = m.getBoundingClientRect();
+            const vw = window.innerWidth || 0;
+            const vh = window.innerHeight || 0;
+            const pad = 8;
+
+            let left = ar.right - mr.width;
+            if (vw) left = Math.max(pad, Math.min(left, Math.max(pad, vw - mr.width - pad)));
+            else left = Math.max(pad, left);
+
+            const downTop = ar.bottom + 6;
+            const upTop = ar.top - 6 - mr.height;
+            let top = downTop;
+            if (vh && downTop + mr.height > vh - pad) top = Math.max(pad, upTop);
+            if (vh) top = Math.max(pad, Math.min(top, Math.max(pad, vh - mr.height - pad)));
+
+            m.style.left = `${Math.round(left)}px`;
+            m.style.top = `${Math.round(top)}px`;
+          } catch (_) {}
+        }, 0);
       }
 
       function safeHost(url) {
@@ -924,18 +954,7 @@
               <div class="btnRow" style="margin-top:8px;">
                 <button class="primary" data-action="conn_new_ds" data-id="${c.id}" type="button">Nueva extraccion</button>
                 <button data-action="conn_use" data-id="${c.id}" type="button">Seleccionar</button>
-                <div class="menuWrap">
-                  <button class="menuBtn" data-action="menu_conn" data-id="${c.id}" type="button" aria-label="Menu">...</button>
-                  ${
-                    openMenuForConnectionId === c.id
-                      ? `<div class="menu">
-                          <button class="menuItem" data-action="conn_edit" data-id="${c.id}" type="button">Editar</button>
-                          <button class="menuItem" data-action="conn_logout" data-id="${c.id}" type="button">Logout</button>
-                          <button class="menuItem danger" data-action="conn_delete" data-id="${c.id}" type="button">Borrar</button>
-                        </div>`
-                      : ""
-                  }
-                </div>
+                <button class="menuBtn" data-action="menu_conn" data-id="${c.id}" type="button" aria-label="Menu">...</button>
               </div>
             `;
             cl.appendChild(it);
@@ -1024,21 +1043,7 @@
                 <div class="detailActions">
                   <button data-action="back_ds" type="button">Volver</button>
                   <button class="primary" data-action="refresh" data-id="${dsCurrent.id}" type="button">Refresh</button>
-                  <div class="menuWrap">
-                    <button class="menuBtn" data-action="menu_ds" data-id="${dsCurrent.id}" type="button" aria-label="Menu">...</button>
-                    ${
-                      openMenuForDatasourceId === dsCurrent.id
-                        ? `<div class="menu">
-                            <button class="menuItem" data-action="edit" data-id="${dsCurrent.id}" type="button">Editar</button>
-                            <button class="menuItem" data-action="schedule" data-id="${dsCurrent.id}" type="button">Timer</button>
-                            <button class="menuItem" data-action="history" data-id="${dsCurrent.id}" type="button">Historial</button>
-                            <button class="menuItem" data-action="duplicate" data-id="${dsCurrent.id}" type="button">Duplicar</button>
-                            <button class="menuItem" data-action="rename" data-id="${dsCurrent.id}" type="button">Renombrar</button>
-                            <button class="menuItem danger" data-action="delete" data-id="${dsCurrent.id}" type="button">Borrar</button>
-                          </div>`
-                        : ""
-                    }
-                  </div>
+                  <button class="menuBtn" data-action="menu_ds" data-id="${dsCurrent.id}" type="button" aria-label="Menu">...</button>
                 </div>
               </div>
               ${
@@ -1068,7 +1073,7 @@
                 <button class="primary" data-action="pick_columns_detail" data-id="${dsCurrent.id}" type="button">Editar columnas</button>
               </div>
               <div class="pills" style="margin-top:8px;">
-                ${fields.map((f) => `<span class="pill">${escapeHtml(f.fieldName)}</span>`).join("")}
+                ${fields.map((f) => `<span class="pill" title="${escapeHtml(f.fieldName)}">${escapeHtml((f.label || f.fieldName) || f.fieldName)}</span>`).join("")}
               </div>
 
               <div class="sep"></div>
@@ -1195,7 +1200,7 @@
           updateFilterSummaries();
         } else {
           currentDatasourceId = "";
-          openMenuForDatasourceId = "";
+          closeFloatMenu();
           if (dl) dl.style.display = "block";
           if (detail) detail.style.display = "none";
 
@@ -1216,8 +1221,8 @@
                 ? `<span class="pill statusPill ${ok ? "ok" : "err"}">${escapeHtml(ds.lastRun.status)}</span>`
                 : `<span class="pill">NEW</span>`;
               const nextRun = ds.nextRunAt ? `Prox: ${ds.nextRunAt}` : "";
-              const fields = (ds.fields || []).map((f) => f.fieldName);
-              const fieldsPreview = fields.slice(0, 3).join(", ") + (fields.length > 3 ? ` (+${fields.length - 3})` : "");
+              const fields = (ds.fields || []).map((f) => (f && (f.label || f.fieldName)) || "");
+              const fieldsPreview = fields.filter(Boolean).slice(0, 3).join(", ") + (fields.length > 3 ? ` (+${fields.length - 3})` : "");
 
               it.innerHTML = `
                 <div class="dsRow" data-open-ds="${ds.id}">
@@ -1232,19 +1237,6 @@
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v7h-7"/></svg>
                     </button>
                     <button class="menuBtn" data-action="menu_ds" data-id="${ds.id}" type="button" aria-label="Menu">...</button>
-                    ${
-                      openMenuForDatasourceId === ds.id
-                        ? `<div class="menu">
-                            <button class="menuItem" data-action="open_ds" data-id="${ds.id}" type="button">Abrir detalle</button>
-                            <button class="menuItem" data-action="edit" data-id="${ds.id}" type="button">Editar</button>
-                            <button class="menuItem" data-action="schedule" data-id="${ds.id}" type="button">Timer</button>
-                            <button class="menuItem" data-action="history" data-id="${ds.id}" type="button">Historial</button>
-                            <button class="menuItem" data-action="duplicate" data-id="${ds.id}" type="button">Duplicar</button>
-                            <button class="menuItem" data-action="rename" data-id="${ds.id}" type="button">Renombrar</button>
-                            <button class="menuItem danger" data-action="delete" data-id="${ds.id}" type="button">Borrar</button>
-                          </div>`
-                        : ""
-                    }
                   </div>
                 </div>
                 <div id="ds_item_msg_${ds.id}"></div>
@@ -1341,8 +1333,6 @@
           return "JSON invalido (corregir en Avanzado).";
         }
 
-        // Post-layout tweaks (menus near viewport edges).
-        setTimeout(adjustMenusInViewport, 0);
       }
 
       function updateFilterSummaries() {
@@ -1723,9 +1713,11 @@
       document.body.addEventListener("click", (ev) => {
         const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
         const action = btn ? btn.getAttribute("data-action") : null;
+        const inFloatMenu = ev.target && ev.target.closest && ev.target.closest("#floatMenu");
 
         // Click outside: close menus; or open detail when clicking a row.
         if (!action) {
+          if (!inFloatMenu) closeFloatMenu();
           const openEl = ev.target && ev.target.closest && ev.target.closest("[data-open-ds]");
           if (openEl) {
             const id = openEl.getAttribute("data-open-ds");
@@ -1774,24 +1766,11 @@
                return setDatasourceDetail(id);
              }
            }
-          if (openMenuForDatasourceId || openMenuForConnectionId) {
-            openMenuForDatasourceId = "";
-            openMenuForConnectionId = "";
-            render();
-          }
-          return;
-        }
+           return;
+         }
 
-        if (action !== "menu_ds" && openMenuForDatasourceId) openMenuForDatasourceId = "";
-        if (action !== "menu_conn" && openMenuForConnectionId) openMenuForConnectionId = "";
-
-        // If the click came from an open menu item, close that menu immediately (avoid stale open menu without re-render).
-        if (action !== "menu_ds" && action !== "menu_conn") {
-          try {
-            const m = btn && btn.closest && btn.closest(".menu");
-            if (m) m.remove();
-          } catch (_) {}
-        }
+        // Close menu for any real action (menu button will re-open it).
+        if (action !== "menu_ds" && action !== "menu_conn") closeFloatMenu();
 
         if (action === "save_detail") {
           const id = btn.getAttribute("data-id");
@@ -1926,15 +1905,25 @@
 
         if (action === "menu_ds") {
           const id = btn.getAttribute("data-id") || "";
-          openMenuForDatasourceId = openMenuForDatasourceId === id ? "" : id;
-          render();
+          openFloatMenu(btn, `ds:${id}`, [
+            { label: "Abrir detalle", action: "open_ds", id },
+            { label: "Editar", action: "edit", id },
+            { label: "Timer", action: "schedule", id },
+            { label: "Historial", action: "history", id },
+            { label: "Duplicar", action: "duplicate", id },
+            { label: "Renombrar", action: "rename", id },
+            { label: "Borrar", action: "delete", id, danger: true },
+          ]);
           return;
         }
 
         if (action === "menu_conn") {
           const id = btn.getAttribute("data-id") || "";
-          openMenuForConnectionId = openMenuForConnectionId === id ? "" : id;
-          render();
+          openFloatMenu(btn, `conn:${id}`, [
+            { label: "Editar", action: "conn_edit", id },
+            { label: "Logout", action: "conn_logout", id },
+            { label: "Borrar", action: "conn_delete", id, danger: true },
+          ]);
           return;
         }
 
@@ -2311,6 +2300,9 @@
         setExtractsScreen("list");
         setStatus("ok", "Listo.");
       });
+
+      window.addEventListener("scroll", () => closeFloatMenu(), true);
+      window.addEventListener("resize", () => closeFloatMenu(), true);
 
       // Default view
       setView("extracts");
