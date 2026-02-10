@@ -1,4 +1,6 @@
 import {
+  deleteConnection,
+  deleteCredential,
   getConnection,
   getCredential,
   getCurrentContext,
@@ -23,14 +25,24 @@ import { materializeValues } from "./materialize";
 
 export function api_getBootstrap(): {
   context: { spreadsheetId: string; userEmail: string };
-  connections: Connection[];
+  connections: Array<Connection & { hasCredential?: boolean; savedUsername?: string; credentialScope?: "USER" | "DOCUMENT" }>;
   datasources: Array<Datasource & { nextRunAt?: string }>;
   draft: DraftExtraction;
 } {
   const now = new Date();
+  const conns = listConnections().map((c) => {
+    const scope: Credential["scope"] = c.shareCredentials ? "DOCUMENT" : "USER";
+    const cred = getCredential(c.id, scope);
+    return {
+      ...(c as any),
+      hasCredential: Boolean(cred),
+      savedUsername: cred ? cred.odooUsername : undefined,
+      credentialScope: scope,
+    };
+  });
   return {
     context: getCurrentContext(),
-    connections: listConnections(),
+    connections: conns,
     datasources: listDatasources().map((d) => {
       const nextRunAt =
         d.schedulerEnabled && d.schedulerConfig ? computeNextRunAtIso(d.schedulerConfig, now, d) : undefined;
@@ -164,6 +176,26 @@ export function api_updateConnection(input: {
   touchUpdatedAt(conn);
   upsertConnection(conn);
   return conn;
+}
+
+export function api_deleteConnection(input: { connectionId: string }): { ok: true } {
+  const conn = getConnection(input.connectionId);
+  if (!conn) throw new Error("Connection not found.");
+  // Delete saved credentials for this connection as well.
+  const scope: Credential["scope"] = conn.shareCredentials ? "DOCUMENT" : "USER";
+  try {
+    deleteCredential(conn.id, scope);
+  } catch (_) {}
+  deleteConnection(conn.id);
+  return { ok: true };
+}
+
+export function api_clearCredential(input: { connectionId: string }): { ok: true } {
+  const conn = getConnection(input.connectionId);
+  if (!conn) throw new Error("Connection not found.");
+  const scope: Credential["scope"] = conn.shareCredentials ? "DOCUMENT" : "USER";
+  deleteCredential(conn.id, scope);
+  return { ok: true };
 }
 
 export function api_setCredential(input: {

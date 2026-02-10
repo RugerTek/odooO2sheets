@@ -92,6 +92,24 @@
       .status .small { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
       .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+      .tabs { display: flex; gap: 8px; margin: 8px 0 10px; }
+      .tabBtn {
+        flex: 1;
+        text-align: center;
+        padding: 8px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--muted);
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .tabBtn.active {
+        color: #166534;
+        border-color: rgba(22,163,74,0.35);
+        background: rgba(22,163,74,0.08);
+      }
     </style>
   </head>
   <body>
@@ -106,17 +124,29 @@
         <div class="small" id="statusDetail"></div>
       </div>
 
-      <div class="card">
-        <h2>Guia Rapida</h2>
-        <div class="hint">
-          1) Crea una conexion (URL + Database).<br />
-          2) Hace login.<br />
-          3) Crea una extraccion: elegi modelo y campos, guarda, y luego <span class="kbd">Refresh</span>.
+      <div class="tabs">
+        <button class="tabBtn active" id="tab_extracts" type="button">Extracciones</button>
+        <button class="tabBtn" id="tab_connections" type="button">Conexiones</button>
+        <button class="tabBtn" id="tab_help" type="button">Ayuda</button>
+      </div>
+
+      <div id="view_help" style="display:none;">
+        <div class="card">
+          <h2>Guia Rapida</h2>
+          <div class="hint">
+            1) Crea una conexion (URL + Database).<br />
+            2) Hace login (password o API key).<br />
+            3) Crea una extraccion: elegi tabla y columnas, guarda, y luego <span class="kbd">Refresh</span>.<br />
+            4) Activa <span class="kbd">Timer</span> si queres refresco automatico.
+          </div>
         </div>
       </div>
 
+      <div id="view_connections" style="display:none;">
       <div class="card">
-        <h2>1) Conexion</h2>
+        <h2>Conexiones</h2>
+        <label>Nombre (opcional)</label>
+        <input id="c_title" placeholder="Ej: Produccion" />
         <label>Odoo URL (publica)</label>
         <input id="c_url" placeholder="https://xxxxx.odoo.com o https://xxxxx.dev.odoo.com" />
         <label>Database (nombre exacto)</label>
@@ -125,6 +155,7 @@
         <div class="row" style="margin-top: 8px;">
           <button id="btnTestUrl">Probar URL</button>
           <button class="primary" id="btnCreateConn">Guardar conexion</button>
+          <button class="danger" id="btnCancelConnEdit" type="button" style="display:none;">Cancelar</button>
           <button id="btnReload">Recargar</button>
         </div>
         <div id="connMsg"></div>
@@ -135,14 +166,14 @@
       </div>
 
       <div class="card">
-        <h2>2) Login</h2>
+        <h2>Login</h2>
         <label>Conexion</label>
         <select id="login_conn"></select>
         <label>Usuario Odoo</label>
         <input id="login_user" placeholder="ej: admin o tu-email@empresa.com" />
         <label>Password o API Key</label>
         <input id="login_pass" type="password" placeholder="password o api key" />
-        <div class="hint">Podes usar Password o una API Key de Odoo (recomendado). Las credenciales se guardan siempre para que funcione el timer.</div>
+        <div class="hint">Podes usar Password o una API Key de Odoo. Se guardan para que funcione el timer.</div>
 
         <div id="companyBox" style="display:none; margin-top:10px;">
           <label>Company (multiempresa)</label>
@@ -154,9 +185,11 @@
         </div>
         <div id="loginMsg"></div>
       </div>
+      </div>
 
+      <div id="view_extracts">
       <div class="card">
-        <h2>3) Crear Extraccion</h2>
+        <h2>Nueva Extraccion</h2>
         <div class="grid2">
           <div>
             <label>Nombre (opcional)</label>
@@ -234,11 +267,12 @@
         <h2>Mis Extracciones</h2>
         <div class="list" id="datasourcesList"></div>
       </div>
+      </div>
     </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09m";
+      const UI_BUILD = "2026-02-09n";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -246,6 +280,8 @@
       let editingDatasourceId = "";
       let companyByConn = {}; // connId -> { companies: [{id,name}], companyId }
       let dsCompanies = []; // companies for extraction editor dropdown
+      let editingConnId = "";
+      let currentView = "extracts"; // extracts | connections | help
 
       function setStatus(kind, text, detail) {
         const bar = $("statusBar");
@@ -453,6 +489,44 @@
         btn.textContent = "Guardar cambios";
       }
 
+      function setConnEditingUI(conn) {
+        const btn = $("btnCreateConn");
+        const cancel = $("btnCancelConnEdit");
+        if (!btn || !cancel) return;
+        if (!conn) {
+          editingConnId = "";
+          btn.textContent = "Guardar conexion";
+          cancel.style.display = "none";
+          try { $("c_title").value = ""; } catch (_) {}
+          try { $("c_url").value = ""; } catch (_) {}
+          try { $("c_db").value = ""; } catch (_) {}
+          return;
+        }
+        editingConnId = conn.id;
+        btn.textContent = "Guardar cambios";
+        cancel.style.display = "inline-block";
+        try { $("c_title").value = conn.title || ""; } catch (_) {}
+        try { $("c_url").value = conn.odooUrl || ""; } catch (_) {}
+        try { $("c_db").value = conn.odooDb || ""; } catch (_) {}
+      }
+
+      function setView(view) {
+        currentView = view;
+        const vExtracts = $("view_extracts");
+        const vConns = $("view_connections");
+        const vHelp = $("view_help");
+        if (vExtracts) vExtracts.style.display = view === "extracts" ? "block" : "none";
+        if (vConns) vConns.style.display = view === "connections" ? "block" : "none";
+        if (vHelp) vHelp.style.display = view === "help" ? "block" : "none";
+
+        const b1 = $("tab_extracts");
+        const b2 = $("tab_connections");
+        const b3 = $("tab_help");
+        if (b1) b1.classList.toggle("active", view === "extracts");
+        if (b2) b2.classList.toggle("active", view === "connections");
+        if (b3) b3.classList.toggle("active", view === "help");
+      }
+
       function render() {
         // Connections list
         const cl = $("connectionsList");
@@ -469,6 +543,13 @@
             it.innerHTML = `
               <div class="title">${escapeHtml(c.title || c.name)}</div>
               <div class="meta">${escapeHtml(c.odooUrl)} | DB: ${escapeHtml(c.odooDb)}</div>
+              <div class="meta">Credenciales: ${c.hasCredential ? "OK" : "No"}${c.savedUsername ? " | " + escapeHtml(c.savedUsername) : ""}${c.companyId ? " | Company: #" + escapeHtml(c.companyId) : ""}</div>
+              <div class="row" style="margin-top:8px;">
+                <button data-action="conn_use" data-id="${c.id}">Usar</button>
+                <button data-action="conn_edit" data-id="${c.id}">Editar</button>
+                <button data-action="conn_logout" data-id="${c.id}">Logout</button>
+                <button class="danger" data-action="conn_delete" data-id="${c.id}">Borrar</button>
+              </div>
             `;
             cl.appendChild(it);
           });
@@ -495,6 +576,15 @@
         if (prevDs) $("ds_conn").value = prevDs;
         if (!prevLogin && state.connections.length === 1) $("login_conn").value = state.connections[0].id;
         if (!prevDs && state.connections.length === 1) $("ds_conn").value = state.connections[0].id;
+
+        // Prefill username from saved credential (if any).
+        try {
+          const connId = $("login_conn").value;
+          const c = (state.connections || []).find((x) => x.id === connId);
+          if (c && c.savedUsername && !String($("login_user").value || "").trim()) {
+            $("login_user").value = c.savedUsername;
+          }
+        } catch (_) {}
 
         // Datasources list
         const dl = $("datasourcesList");
@@ -602,6 +692,10 @@
 
       $("login_conn").addEventListener("change", () => {
         const connId = $("login_conn").value;
+        try {
+          const c = (state.connections || []).find((x) => x.id === connId);
+          if (c && c.savedUsername) $("login_user").value = c.savedUsername;
+        } catch (_) {}
         tryLoadCompaniesForConnection(connId);
       });
 
@@ -796,18 +890,25 @@
 
       $("btnCreateConn").addEventListener("click", () => {
         setMsg($("connMsg"), "", "");
+        const title = ($("c_title").value || "").trim();
         const url = ($("c_url").value || "").trim();
         const db = ($("c_db").value || "").trim();
         if (!url) return setMsg($("connMsg"), "err", "Falta la URL.");
         if (!db) return setMsg($("connMsg"), "err", "Falta el Database.");
         $("btnCreateConn").disabled = true;
-        setStatus("info", "Guardando conexion...", `${url} | DB: ${db}`);
+        const isEdit = Boolean(editingConnId);
+        setStatus("info", isEdit ? "Guardando cambios..." : "Guardando conexion...", `${url} | DB: ${db}`);
         runServer(
-          "api_createConnection",
-          [{ odooUrl: url, odooDb: db, storeConnections: false, shareCredentials: false }],
+          isEdit ? "api_updateConnection" : "api_createConnection",
+          [
+            isEdit
+              ? { id: editingConnId, title: title || "Odoo", odooUrl: url, odooDb: db, storeConnections: false, shareCredentials: false }
+              : { title: title || undefined, odooUrl: url, odooDb: db, storeConnections: false, shareCredentials: false },
+          ],
           (conn) => {
-            setMsg($("connMsg"), "ok", "Conexion guardada. Ahora hace login.");
-            setStatus("ok", "Conexion guardada.");
+            setMsg($("connMsg"), "ok", isEdit ? "Cambios guardados." : "Conexion guardada. Ahora hace login.");
+            setStatus("ok", isEdit ? "Conexion actualizada." : "Conexion guardada.");
+            setConnEditingUI(null);
             loadBootstrap();
             setTimeout(() => {
               try {
@@ -819,11 +920,13 @@
           },
           (e) => {
             setMsg($("connMsg"), "err", (e && (e.message || String(e))) || "Error");
-            setStatus("err", "No se pudo guardar la conexion.", e && (e.message || String(e)));
+            setStatus("err", isEdit ? "No se pudieron guardar los cambios." : "No se pudo guardar la conexion.", e && (e.message || String(e)));
             $("btnCreateConn").disabled = false;
           }
         );
       });
+
+      $("btnCancelConnEdit").addEventListener("click", () => setConnEditingUI(null));
 
       $("btnLogin").addEventListener("click", () => {
         setMsg($("loginMsg"), "", "");
@@ -913,6 +1016,78 @@
         const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
         const action = btn ? btn.getAttribute("data-action") : null;
         if (!action) return;
+
+        if (action === "conn_use") {
+          const id = btn.getAttribute("data-id");
+          if (!id) return;
+          try { $("login_conn").value = id; } catch (_) {}
+          try { $("ds_conn").value = id; } catch (_) {}
+          try {
+            const c = (state.connections || []).find((x) => x.id === id);
+            if (c && c.savedUsername) $("login_user").value = c.savedUsername;
+          } catch (_) {}
+          setView("connections");
+          setStatus("ok", "Conexion seleccionada. Ahora hace login si hace falta.");
+          tryLoadCompaniesForConnection(id);
+          return;
+        }
+
+        if (action === "conn_edit") {
+          const id = btn.getAttribute("data-id");
+          const c = (state.connections || []).find((x) => x.id === id);
+          if (!c) return setStatus("err", "No encontre la conexion.", `Connection: ${id}`);
+          setView("connections");
+          setConnEditingUI(c);
+          setStatus("info", "Editando conexion...", c.title || c.name);
+          return;
+        }
+
+        if (action === "conn_logout") {
+          const id = btn.getAttribute("data-id");
+          const ok = confirm("Borrar credenciales guardadas de esta conexion?\n\nLuego vas a tener que hacer login de nuevo.");
+          if (!ok) return;
+          btn.disabled = true;
+          setStatus("info", "Borrando credenciales...");
+          runServer(
+            "api_clearCredential",
+            [{ connectionId: id }],
+            () => {
+              btn.disabled = false;
+              setStatus("ok", "Credenciales borradas.");
+              loadBootstrap();
+            },
+            (e) => {
+              btn.disabled = false;
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude borrar credenciales.", msg);
+            }
+          );
+          return;
+        }
+
+        if (action === "conn_delete") {
+          const id = btn.getAttribute("data-id");
+          const ok = confirm("Borrar esta conexion?\n\nEsto tambien borra todas las extracciones que usan esa conexion.");
+          if (!ok) return;
+          btn.disabled = true;
+          setStatus("info", "Borrando conexion...");
+          runServer(
+            "api_deleteConnection",
+            [{ connectionId: id }],
+            () => {
+              btn.disabled = false;
+              setConnEditingUI(null);
+              setStatus("ok", "Conexion borrada.");
+              loadBootstrap();
+            },
+            (e) => {
+              btn.disabled = false;
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude borrar la conexion.", msg);
+            }
+          );
+          return;
+        }
 
         if (action === "schedule") {
           const id = btn.getAttribute("data-id");
@@ -1126,6 +1301,13 @@
       try {
         $("uiBuild").textContent = UI_BUILD;
       } catch (_) {}
+
+      $("tab_extracts").addEventListener("click", () => setView("extracts"));
+      $("tab_connections").addEventListener("click", () => setView("connections"));
+      $("tab_help").addEventListener("click", () => setView("help"));
+
+      // Default view
+      setView("extracts");
 
       loadBootstrap();
     </script>

@@ -1,7 +1,9 @@
 import {
+  api_clearCredential,
   api_createConnection,
   api_createDatasource,
   api_deleteDatasource,
+  api_deleteConnection,
   api_clearDraftExtraction,
   api_getCompanies,
   api_getBootstrap,
@@ -57,6 +59,8 @@ function showSidebar(): void {
 (globalThis as any).api_listSheets = api_listSheets;
 (globalThis as any).api_createConnection = api_createConnection;
 (globalThis as any).api_updateConnection = api_updateConnection;
+(globalThis as any).api_deleteConnection = api_deleteConnection;
+(globalThis as any).api_clearCredential = api_clearCredential;
 (globalThis as any).api_setConnectionCompany = api_setConnectionCompany;
 (globalThis as any).api_setCredential = api_setCredential;
 (globalThis as any).api_createDatasource = api_createDatasource;
