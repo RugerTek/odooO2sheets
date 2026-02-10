@@ -84,10 +84,11 @@
       .item { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(15,23,42,0.02); }
       .title { font-weight: 600; overflow-wrap: break-word; }
       .meta { color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
-      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .pill.good { border-color: rgba(22,163,74,0.35); color: #166534; background: rgba(22,163,74,0.08); }
       .pill.bad { border-color: rgba(220,38,38,0.35); color: #991b1b; background: rgba(220,38,38,0.08); }
       .pill.info { border-color: rgba(37,99,235,0.35); color: #1d4ed8; background: rgba(37,99,235,0.08); }
+      .row.wrap > .pill { min-width: 0; }
       .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border: 1px solid var(--line); padding: 1px 6px; border-radius: 7px; background: rgba(15,23,42,0.02); }
       .iconBtn {
         display: inline-flex;
@@ -152,12 +153,17 @@
         right: 0;
         z-index: 50;
         min-width: 190px;
+        max-width: calc(100vw - 32px);
         border: 1px solid var(--line);
         border-radius: 12px;
         background: #fff;
         box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
         padding: 6px;
+        overflow-wrap: anywhere;
       }
+      .menu.up { top: auto; bottom: 38px; }
+      .menu.shiftRight { left: 0; right: auto; }
+      .menu.shiftLeft { right: 0; left: auto; }
       .menuItem {
         width: 100%;
         text-align: left;
@@ -416,7 +422,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10i";
+      const UI_BUILD = "2026-02-10j";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -648,7 +654,8 @@
         selectedFields.slice(0, 10).forEach((f) => {
           const p = document.createElement("span");
           p.className = "pill";
-          p.textContent = f.fieldName;
+          p.textContent = (f.label && String(f.label).trim()) ? String(f.label).trim() : f.fieldName;
+          p.title = f.fieldName;
           pills.appendChild(p);
         });
         if (n > 10) {
@@ -844,6 +851,29 @@
         } catch {
           return s;
         }
+      }
+
+      function adjustMenusInViewport() {
+        try {
+          const vh = window.innerHeight || 0;
+          const vw = window.innerWidth || 0;
+
+          // Reset.
+          document.querySelectorAll(".menu").forEach((m) => m.classList.remove("up", "shiftRight", "shiftLeft"));
+
+          // Pass 1: vertical.
+          document.querySelectorAll(".menu").forEach((m) => {
+            const r = m.getBoundingClientRect();
+            if (vh && r.bottom > vh - 8) m.classList.add("up");
+          });
+
+          // Pass 2: horizontal (after vertical class may change layout).
+          document.querySelectorAll(".menu").forEach((m) => {
+            const r = m.getBoundingClientRect();
+            if (vw && r.left < 8) m.classList.add("shiftRight");
+            else if (vw && r.right > vw - 8) m.classList.add("shiftLeft");
+          });
+        } catch (_) {}
       }
 
       function safeHost(url) {
@@ -1310,6 +1340,9 @@
         } catch {
           return "JSON invalido (corregir en Avanzado).";
         }
+
+        // Post-layout tweaks (menus near viewport edges).
+        setTimeout(adjustMenusInViewport, 0);
       }
 
       function updateFilterSummaries() {
