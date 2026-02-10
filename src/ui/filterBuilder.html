@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html>
   <head>
     <base target="_top" />
@@ -39,8 +39,13 @@
       .item:hover { background: rgba(37,99,235,0.06); border-color: rgba(37,99,235,0.25); }
       .title { font-weight: 700; }
       .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-      .rule { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-      .rule.active { outline: 2px solid rgba(37,99,235,0.35); }
+      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; background: #fff; }
+      .pill.active { border-color: rgba(37,99,235,0.35); color: #1d4ed8; background: rgba(37,99,235,0.08); }
+
+      .nodeGroup { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+      .nodeGroup.active { outline: 2px solid rgba(37,99,235,0.35); }
+      .nodeRule { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,0.02); }
+      .indent { margin-left: 12px; border-left: 2px solid rgba(15,23,42,0.08); padding-left: 10px; margin-top: 10px; }
       .smallBtn { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
       label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 2px; }
       .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
@@ -62,9 +67,10 @@
 
       <div class="row" style="margin-top: 12px;">
         <button id="btnLoad" type="button">Cargar campos</button>
-        <div class="col muted">Tip: agrega reglas simples. Para dominios complejos usa el modo avanzado (JSON).</div>
+        <div class="col muted">Tip: selecciona un grupo y agrega reglas o subgrupos.</div>
+        <button id="btnAddGroup" type="button">Agregar grupo</button>
         <button id="btnAddRule" type="button">Agregar regla</button>
-        <button class="danger" id="btnClearRules" type="button">Quitar todas</button>
+        <button class="danger" id="btnClearAll" type="button">Quitar todo</button>
       </div>
 
       <div id="msg"></div>
@@ -78,24 +84,23 @@
           </div>
         </div>
         <div class="panel">
+          <div class="panelTitle">Constructor visual</div>
           <div class="row" style="justify-content:space-between;">
-            <div class="panelTitle" id="rulesTitle" style="margin:0;">Reglas</div>
-            <div style="min-width: 220px;">
-              <select id="combine">
-                <option value="AND">Todas (AND)</option>
-                <option value="OR">Cualquiera (OR)</option>
-              </select>
+            <div class="row" style="gap:8px;">
+              <span class="pill" id="activeGroupPill">Grupo activo</span>
+              <span class="muted" id="activeGroupMeta"></span>
             </div>
+            <button class="smallBtn" id="btnSelectRoot" type="button">Ir al root</button>
           </div>
-          <div class="hint">Hace click en un campo para agregarlo como regla. Podes editar operador y valor.</div>
-          <div class="list" id="rules"></div>
+          <div class="hint">Hace click en un campo para agregarlo al grupo activo. Dentro de cada grupo podes elegir AND/OR.</div>
+          <div id="tree" style="margin-top:10px;"></div>
 
           <div class="sep" style="height:1px;background:var(--line);margin:12px 0;"></div>
           <div class="panelTitle">Preview domain</div>
           <textarea id="domainPreview" readonly></textarea>
           <details style="margin-top:10px;">
             <summary class="title">Modo avanzado (JSON)</summary>
-            <div class="hint">Si tu filtro es complejo (OR, AND anidados), editá el JSON directamente.</div>
+            <div class="hint">Si tu filtro es complejo (NOT, operadores raros), edita el JSON directamente.</div>
             <textarea id="domainAdvanced" placeholder='[["active","=",true]]'></textarea>
             <div class="row" style="margin-top:8px;">
               <label class="row" style="gap:8px; margin:0;"><input type="checkbox" id="useAdvanced" /> Usar avanzado</label>
@@ -112,9 +117,11 @@
       const $ = (id) => document.getElementById(id);
 
       let allFields = [];
-      let rules = [];
-      let activeRuleId = "";
       let loaded = false;
+
+      // Visual builder tree: Group(op: AND|OR, children: [Group|Rule])
+      let root = null;
+      let activeGroupId = "";
 
       function setMsg(kind, text) {
         const el = $("msg");
@@ -158,6 +165,66 @@
 
       function fieldByName(name) {
         return allFields.find((f) => f.fieldName === name) || null;
+      }
+
+      const MAX_DEPTH = 3; // root + 2 niveles
+
+      function newGroup(op) {
+        return { kind: "group", id: uid(), op: op || "AND", children: [] };
+      }
+
+      function newRule(fieldName) {
+        const f = fieldName ? fieldByName(fieldName) : null;
+        const type = f ? (f.type || "") : "";
+        const ops = opsForField(f || { type });
+        const op = (ops[0] && ops[0].id) ? ops[0].id : "=";
+        let value = "";
+        if (type === "boolean") value = true;
+        if (type === "selection" && f && f.selection && f.selection.length) value = f.selection[0].value;
+        return { kind: "rule", id: uid(), fieldName: fieldName || "", type, op, value };
+      }
+
+      function findNode(node, id) {
+        if (!node) return null;
+        if (node.id === id) return node;
+        if (node.kind === "group") {
+          for (const ch of node.children || []) {
+            const r = findNode(ch, id);
+            if (r) return r;
+          }
+        }
+        return null;
+      }
+
+      function findParent(node, childId, parent) {
+        if (!node) return null;
+        if (node.id === childId) return parent || null;
+        if (node.kind === "group") {
+          for (const ch of node.children || []) {
+            const r = findParent(ch, childId, node);
+            if (r) return r;
+          }
+        }
+        return null;
+      }
+
+      function depthOf(node, id, depth) {
+        if (!node) return -1;
+        if (node.id === id) return depth || 1;
+        if (node.kind === "group") {
+          for (const ch of node.children || []) {
+            const d = depthOf(ch, id, (depth || 1) + 1);
+            if (d !== -1) return d;
+          }
+        }
+        return -1;
+      }
+
+      function setActiveGroup(id) {
+        const n = findNode(root, id);
+        if (!n || n.kind !== "group") return;
+        activeGroupId = id;
+        renderTree();
       }
 
       function opsForField(f) {
@@ -260,38 +327,52 @@
         return [r.fieldName, op, v];
       }
 
-      function computeDomainFromRules() {
-        const out = [];
-        for (const r of rules) {
-          if (!r.fieldName) continue;
-          if (!r.op) continue;
-          const hasVal = !(r.value === null || r.value === undefined) && (typeof r.value !== "string" || r.value.trim() !== "");
-
-          if ((r.op === "__name_ilike__" || r.op === "__name_not_ilike__") && !hasVal) continue;
-
-          // allow empty values only for set/empty; other ops usually require a value
-          if (r.op === "in" || r.op === "not in") {
-            const arr = convertValue(fieldByName(r.fieldName), r.op, r.value);
-            if (!arr || !arr.length) continue;
-          } else if (r.op === "__set__" || r.op === "__empty__") {
-            // ok
-          } else if (fieldByName(r.fieldName)?.type === "boolean") {
-            // ok (value comes from dropdown)
-          } else if (!hasVal) {
-            continue;
-          }
-          out.push(ruleToDomainTerm(r));
+      function isValidRule(r) {
+        if (!r || r.kind !== "rule") return false;
+        if (!r.fieldName) return false;
+        if (!r.op) return false;
+        const hasVal = !(r.value === null || r.value === undefined) && (typeof r.value !== "string" || r.value.trim() !== "");
+        if (r.op === "__set__" || r.op === "__empty__") return true;
+        if ((r.op === "__name_ilike__" || r.op === "__name_not_ilike__") && !hasVal) return false;
+        if (r.op === "in" || r.op === "not in") {
+          const arr = convertValue(fieldByName(r.fieldName), r.op, r.value);
+          return Boolean(arr && arr.length);
         }
-        return out;
+        if (fieldByName(r.fieldName)?.type === "boolean") return true;
+        return hasVal;
+      }
+
+      function emitNode(node) {
+        if (!node) return [];
+        if (node.kind === "rule") {
+          if (!isValidRule(node)) return [];
+          return [ruleToDomainTerm(node)];
+        }
+
+        const parts = [];
+        for (const ch of node.children || []) {
+          const out = emitNode(ch);
+          if (!out || !out.length) continue;
+          // out is [term] or tokens; both are fine in token-stream domain.
+          if (out.length === 1 && Array.isArray(out[0]) && out[0].length === 3) parts.push(out[0]);
+          else parts.push(...out);
+        }
+
+        if (!parts.length) return [];
+        if (parts.length === 1) return [parts[0]];
+
+        const opToken = String(node.op || "AND").toUpperCase() === "OR" ? "|" : "&";
+        return Array(parts.length - 1).fill(opToken).concat(parts);
       }
 
       function computeDomainArray() {
-        const terms = computeDomainFromRules();
-        const mode = String($("combine").value || "AND").toUpperCase();
-        if (mode !== "OR") return terms;
-        if (terms.length <= 1) return terms;
-        // Odoo domain OR of N terms: prepend N-1 "|" tokens in prefix notation.
-        return Array(terms.length - 1).fill("|").concat(terms);
+        const toks = emitNode(root);
+        // normalize: single term => [[...]]
+        if (toks.length === 1 && Array.isArray(toks[0]) && toks[0].length === 3) return [toks[0]];
+        // If root is AND and everything is a term, allow implicit AND: [[..],[..]]
+        const onlyTerms = toks.length && toks.every((x) => Array.isArray(x) && x.length === 3);
+        if (root && String(root.op || "AND").toUpperCase() === "AND" && onlyTerms) return toks;
+        return toks;
       }
 
       function renderFields() {
@@ -316,144 +397,177 @@
           it.className = "item";
           it.innerHTML = `<div class="title">${escapeHtml(f.label || f.fieldName)}</div><div class="meta">${escapeHtml(f.fieldName)} | ${escapeHtml(f.type || "")}</div>`;
           it.addEventListener("click", () => {
-            // If there's an active rule with empty field, fill it; else add new rule.
-            const idx = rules.findIndex((r) => r.id === activeRuleId);
-            if (idx >= 0 && !rules[idx].fieldName) {
-              rules[idx].fieldName = f.fieldName;
-              rules[idx].type = f.type || "";
-              rules[idx].op = (opsForField(f)[0] || {}).id || "=";
-              rules[idx].value = "";
-              if (f.type === "boolean") rules[idx].value = true;
-              if (f.type === "selection" && f.selection && f.selection.length) rules[idx].value = f.selection[0].value;
-            } else {
-              const r = { id: uid(), fieldName: f.fieldName, type: f.type || "", op: (opsForField(f)[0] || {}).id || "=", value: "" };
-              if (f.type === "boolean") r.value = true;
-              if (f.type === "selection" && f.selection && f.selection.length) r.value = f.selection[0].value;
-              rules.push(r);
-              activeRuleId = r.id;
-            }
-            renderRules();
+            const g = findNode(root, activeGroupId);
+            if (!g || g.kind !== "group") return;
+            g.children.push(newRule(f.fieldName));
+            renderTree();
           });
           box.appendChild(it);
         }
       }
 
-      function renderRules() {
-        const box = $("rules");
-        box.innerHTML = "";
-        try { updateTitle(); } catch (_) {}
-        if (!rules.length) {
+      function renderNode(node, depth) {
+        if (!node) return document.createElement("div");
+
+        if (node.kind === "rule") {
+          const f = node.fieldName ? fieldByName(node.fieldName) : null;
+          const ops = opsForField(f || { type: node.type || "char" });
+          const el = document.createElement("div");
+          el.className = "nodeRule";
+          el.innerHTML = `
+            <div class="row" style="justify-content:space-between;">
+              <div class="col">
+                <div class="title">${escapeHtml(f ? (f.label || f.fieldName) : (node.fieldName || "(sin campo)"))}</div>
+                <div class="meta">${escapeHtml(node.fieldName || "")} ${node.type ? "| " + escapeHtml(node.type) : ""}</div>
+              </div>
+              <button class="smallBtn danger" data-action="rm_rule" data-id="${escapeHtml(node.id)}" type="button">Quitar</button>
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+              <div>
+                <label>Operador</label>
+                <select data-action="op" data-id="${escapeHtml(node.id)}"></select>
+              </div>
+              <div>
+                <label>Valor</label>
+                <div data-slot="val" data-id="${escapeHtml(node.id)}"></div>
+              </div>
+            </div>
+          `;
+
+          const sel = el.querySelector('select[data-action="op"][data-id="' + node.id + '"]');
+          sel.innerHTML = "";
+          for (const o of ops) {
+            const opt = document.createElement("option");
+            opt.value = o.id;
+            opt.textContent = o.label;
+            sel.appendChild(opt);
+          }
+          if (!node.op) node.op = (ops[0] || {}).id || "=";
+          sel.value = node.op;
+          sel.addEventListener("change", () => {
+            node.op = sel.value;
+            if (node.type === "boolean") node.value = true;
+            renderTree();
+          });
+
+          const slot = el.querySelector('div[data-slot="val"][data-id="' + node.id + '"]');
+          slot.innerHTML = "";
+          if (node.op === "__set__" || node.op === "__empty__") {
+            const d = document.createElement("div");
+            d.className = "muted";
+            d.textContent = "No requiere valor.";
+            slot.appendChild(d);
+          } else if (node.type === "boolean") {
+            const s = document.createElement("select");
+            s.innerHTML = `<option value="true">true</option><option value="false">false</option>`;
+            s.value = String(Boolean(node.value));
+            s.addEventListener("change", () => (node.value = s.value === "true"));
+            slot.appendChild(s);
+          } else if (node.type === "selection" && f && f.selection && f.selection.length) {
+            const s = document.createElement("select");
+            for (const x of f.selection) {
+              const opt = document.createElement("option");
+              opt.value = x.value;
+              opt.textContent = x.label;
+              s.appendChild(opt);
+            }
+            s.value = String(node.value || f.selection[0].value);
+            s.addEventListener("change", () => (node.value = s.value));
+            slot.appendChild(s);
+          } else if (node.type === "date") {
+            const inp = document.createElement("input");
+            inp.type = "date";
+            inp.value = String(node.value || "");
+            inp.addEventListener("input", () => (node.value = inp.value));
+            slot.appendChild(inp);
+          } else if (node.type === "datetime") {
+            const inp = document.createElement("input");
+            inp.type = "datetime-local";
+            const cur = String(node.value || "");
+            inp.value = cur.includes(" ") ? cur.replace(" ", "T").slice(0, 16) : cur;
+            inp.addEventListener("input", () => (node.value = inp.value));
+            slot.appendChild(inp);
+          } else {
+            const inp = document.createElement("input");
+            inp.placeholder = (node.op === "in" || node.op === "not in") ? "separado por coma (ej: 1,2,3)" : "valor";
+            inp.value = String(node.value || "");
+            inp.addEventListener("input", () => (node.value = inp.value));
+            slot.appendChild(inp);
+          }
+
+          return el;
+        }
+
+        const el = document.createElement("div");
+        el.className = "nodeGroup" + (node.id === activeGroupId ? " active" : "");
+        const depthNum = depth || 1;
+        const disableAddGroup = depthNum >= MAX_DEPTH;
+        el.innerHTML = `
+          <div class="row" style="justify-content:space-between;">
+            <div class="row" style="gap:8px;">
+              <span class="pill ${node.id === activeGroupId ? "active" : ""}">Grupo</span>
+              <span class="meta">Nivel: ${depthNum}</span>
+            </div>
+            <div class="row">
+              ${node.id !== root.id ? `<button class="smallBtn danger" data-action="rm_group" data-id="${escapeHtml(node.id)}" type="button">Quitar grupo</button>` : ""}
+            </div>
+          </div>
+          <div class="grid2" style="margin-top:10px;">
+            <div>
+              <label>Combinar</label>
+              <select data-action="group_op" data-id="${escapeHtml(node.id)}">
+                <option value="AND">Todas (AND)</option>
+                <option value="OR">Cualquiera (OR)</option>
+              </select>
+            </div>
+            <div>
+              <label>Acciones</label>
+              <div class="row">
+                <button class="smallBtn" data-action="add_rule" data-id="${escapeHtml(node.id)}" type="button">+ Regla</button>
+                <button class="smallBtn" data-action="add_group" data-id="${escapeHtml(node.id)}" type="button" ${disableAddGroup ? "disabled" : ""}>+ Grupo</button>
+                <button class="smallBtn" data-action="select_group" data-id="${escapeHtml(node.id)}" type="button">Seleccionar</button>
+              </div>
+              ${disableAddGroup ? `<div class="hint">Max nivel alcanzado.</div>` : ""}
+            </div>
+          </div>
+        `;
+
+        const sel = el.querySelector('select[data-action="group_op"][data-id="' + node.id + '"]');
+        sel.value = String(node.op || "AND").toUpperCase() === "OR" ? "OR" : "AND";
+        sel.addEventListener("change", () => {
+          node.op = sel.value;
+          renderTree();
+        });
+
+        const childrenBox = document.createElement("div");
+        childrenBox.className = "indent";
+        if (!node.children || !node.children.length) {
           const d = document.createElement("div");
           d.className = "muted";
-          d.textContent = "Sin reglas. Hace click en un campo para agregarlo.";
-          box.appendChild(d);
+          d.textContent = "Sin hijos. Agrega reglas o grupos.";
+          childrenBox.appendChild(d);
         } else {
-          for (const r of rules) {
-            const f = r.fieldName ? fieldByName(r.fieldName) : null;
-            const ops = opsForField(f || { type: r.type || "char" });
-            const el = document.createElement("div");
-            el.className = "rule" + (r.id === activeRuleId ? " active" : "");
-            el.innerHTML = `
-              <div class="row" style="justify-content:space-between;">
-                <div>
-                  <div class="title">${escapeHtml(f ? (f.label || f.fieldName) : (r.fieldName || "(sin campo)"))}</div>
-                  <div class="meta">${escapeHtml(r.fieldName || "")} ${r.type ? "| " + escapeHtml(r.type) : ""}</div>
-                </div>
-                <button class="smallBtn danger" data-action="rm" data-id="${escapeHtml(r.id)}" type="button">Quitar</button>
-              </div>
-              <div class="grid2" style="margin-top:10px;">
-                <div>
-                  <label>Operador</label>
-                  <select data-action="op" data-id="${escapeHtml(r.id)}"></select>
-                </div>
-                <div>
-                  <label>Valor</label>
-                  <div data-slot="val" data-id="${escapeHtml(r.id)}"></div>
-                </div>
-              </div>
-            `;
-            el.addEventListener("click", (ev) => {
-              const btn = ev.target && ev.target.closest && ev.target.closest("button");
-              if (btn) return;
-              activeRuleId = r.id;
-              renderRules();
-            });
-            box.appendChild(el);
-
-            // Fill operator select
-            const sel = el.querySelector('select[data-action="op"][data-id="' + r.id + '"]');
-            sel.innerHTML = "";
-            for (const o of ops) {
-              const opt = document.createElement("option");
-              opt.value = o.id;
-              opt.textContent = o.label;
-              sel.appendChild(opt);
-            }
-            if (!r.op) r.op = (ops[0] || {}).id || "=";
-            sel.value = r.op;
-            sel.addEventListener("change", () => {
-              r.op = sel.value;
-              // reset value for some types
-              if (r.type === "boolean") r.value = true;
-              renderRules();
-            });
-
-            // Render value input
-            const slot = el.querySelector('div[data-slot="val"][data-id="' + r.id + '"]');
-            slot.innerHTML = "";
-            if (r.op === "__set__" || r.op === "__empty__") {
-              const d = document.createElement("div");
-              d.className = "muted";
-              d.textContent = "No requiere valor.";
-              slot.appendChild(d);
-            } else if (r.type === "boolean") {
-              const s = document.createElement("select");
-              s.innerHTML = `<option value="true">true</option><option value="false">false</option>`;
-              s.value = String(Boolean(r.value));
-              s.addEventListener("change", () => (r.value = s.value === "true"));
-              slot.appendChild(s);
-            } else if (r.type === "selection" && f && f.selection && f.selection.length) {
-              const s = document.createElement("select");
-              for (const x of f.selection) {
-                const opt = document.createElement("option");
-                opt.value = x.value;
-                opt.textContent = x.label;
-                s.appendChild(opt);
-              }
-              s.value = String(r.value || f.selection[0].value);
-              s.addEventListener("change", () => (r.value = s.value));
-              slot.appendChild(s);
-            } else if (r.type === "date") {
-              const inp = document.createElement("input");
-              inp.type = "date";
-              inp.value = String(r.value || "");
-              inp.addEventListener("input", () => (r.value = inp.value));
-              slot.appendChild(inp);
-            } else if (r.type === "datetime") {
-              const inp = document.createElement("input");
-              inp.type = "datetime-local";
-              // best-effort for existing "YYYY-MM-DD HH:MM:SS"
-              const cur = String(r.value || "");
-              inp.value = cur.includes(" ") ? cur.replace(" ", "T").slice(0, 16) : cur;
-              inp.addEventListener("input", () => (r.value = inp.value));
-              slot.appendChild(inp);
-            } else {
-              const inp = document.createElement("input");
-              inp.placeholder = (r.op === "in" || r.op === "not in") ? "separado por coma (ej: 1,2,3)" : "valor";
-              inp.value = String(r.value || "");
-              inp.addEventListener("input", () => (r.value = inp.value));
-              slot.appendChild(inp);
-            }
+          for (const ch of node.children) {
+            childrenBox.appendChild(renderNode(ch, depthNum + 1));
           }
         }
+        el.appendChild(childrenBox);
+        return el;
+      }
 
-        // Update preview
+      function renderTree() {
+        const depth = depthOf(root, activeGroupId, 1);
+        try {
+          $("activeGroupMeta").textContent = depth > 0 ? `Nivel ${depth} de ${MAX_DEPTH}` : "";
+        } catch (_) {}
+
+        const box = $("tree");
+        box.innerHTML = "";
+        box.appendChild(renderNode(root, 1));
+
         const dom = computeDomainArray();
         $("domainPreview").value = JSON.stringify(dom);
-        if (!$("useAdvanced").checked) {
-          // Keep advanced in sync, but don't override user's manual edit when advanced is on.
-          $("domainAdvanced").value = JSON.stringify(dom, null, 0);
-        }
+        if (!$("useAdvanced").checked) $("domainAdvanced").value = JSON.stringify(dom, null, 0);
       }
 
       function escapeHtml(s) {
@@ -468,59 +582,97 @@
       function tryInitFromDomainString(domainStr) {
         const raw = String(domainStr || "").trim();
         if (!raw) {
-          rules = [];
-          activeRuleId = "";
+          root = newGroup("AND");
+          activeGroupId = root.id;
           $("domainAdvanced").value = "";
           $("useAdvanced").checked = false;
-          $("combine").value = "AND";
-          updateTitle();
-          renderRules();
+          setMsg("ok", "");
+          renderTree();
           return;
         }
-        try {
-          const parsed = JSON.parse(raw);
-          if (!Array.isArray(parsed)) throw new Error("Domain no es un array.");
-          // Builder supports:
-          // - AND: [[field,op,val], ...]
-          // - OR:  ["|","|", [field,op,val], [field,op,val], [field,op,val]]
-          const isTerm = (x) => Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string";
-          const onlyTerms = parsed.every((x) => isTerm(x));
-          const onlyOrTokensAndTerms =
-            parsed.length >= 3 &&
-            parsed.every((x) => (typeof x === "string" ? x === "|" : isTerm(x))) &&
-            parsed.filter((x) => typeof x === "string").length === parsed.filter((x) => typeof x !== "string").length - 1;
 
-          if (!onlyTerms && !onlyOrTokensAndTerms) {
-            $("useAdvanced").checked = true;
-            $("domainAdvanced").value = raw;
-            setMsg("ok", "Dominio complejo detectado: se abre en modo avanzado.");
-            rules = [];
-            activeRuleId = "";
-            renderRules();
-            return;
+        function isTerm(x) {
+          return Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string";
+        }
+
+        function parseDomainToTree(rawJson) {
+          const parsed = JSON.parse(rawJson);
+          if (!Array.isArray(parsed)) throw new Error("Domain no es un array.");
+          if (parsed.some((x) => x === "!")) throw new Error("NOT no soportado en visual.");
+
+          // implicit AND: [[term],[term],...]
+          if (parsed.every((x) => isTerm(x))) {
+            const g = newGroup("AND");
+            for (const t of parsed) {
+              const r = newRule(String(t[0] || ""));
+              r.fieldName = String(t[0] || "");
+              r.op = String(t[1] || "=");
+              r.value = t[2];
+              g.children.push(r);
+            }
+            return g;
           }
 
-          $("combine").value = onlyOrTokensAndTerms ? "OR" : "AND";
-          updateTitle();
-          const terms = onlyOrTokensAndTerms ? parsed.filter((x) => typeof x !== "string") : parsed;
+          // prefix token-stream: ["&","|",term,term,term] etc
+          if (!(parsed[0] === "&" || parsed[0] === "|")) throw new Error("Dominio complejo (no prefix).");
 
-          rules = terms.map((t) => {
-            const fieldName = String(t[0] || "");
-            const op = String(t[1] || "=");
-            const f = fieldByName(fieldName);
-            return { id: uid(), fieldName, type: f ? (f.type || "") : "", op, value: t[2] };
-          });
-          activeRuleId = rules.length ? rules[rules.length - 1].id : "";
+          const tokens = parsed.slice();
+          let idx = 0;
+
+          function parseExpr() {
+            if (idx >= tokens.length) throw new Error("Unexpected end");
+            const t = tokens[idx++];
+            if (t === "&" || t === "|") {
+              const left = parseExpr();
+              const right = parseExpr();
+              const g = newGroup(t === "|" ? "OR" : "AND");
+              g.children.push(left, right);
+              return g;
+            }
+            if (t === "!") throw new Error("NOT no soportado.");
+            if (isTerm(t)) {
+              const r = newRule(String(t[0] || ""));
+              r.fieldName = String(t[0] || "");
+              r.op = String(t[1] || "=");
+              r.value = t[2];
+              return r;
+            }
+            throw new Error("Token desconocido.");
+          }
+
+          function flatten(node) {
+            if (!node || node.kind !== "group") return node;
+            const kids = [];
+            for (const ch of node.children || []) {
+              const fc = flatten(ch);
+              if (fc && fc.kind === "group" && String(fc.op || "").toUpperCase() === String(node.op || "").toUpperCase()) kids.push(...(fc.children || []));
+              else kids.push(fc);
+            }
+            node.children = kids;
+            return node;
+          }
+
+          const expr = parseExpr();
+          if (idx !== tokens.length) throw new Error("Dominio complejo (extra tokens).");
+          return expr.kind === "group" ? flatten(expr) : (() => { const g = newGroup("AND"); g.children = [expr]; return g; })();
+        }
+
+        try {
+          const g = parseDomainToTree(raw);
+          root = g;
+          activeGroupId = root.id;
           $("useAdvanced").checked = false;
+          $("domainAdvanced").value = raw;
           setMsg("ok", "");
-          renderRules();
+          renderTree();
         } catch (e) {
           $("useAdvanced").checked = true;
           $("domainAdvanced").value = raw;
-          setMsg("err", "No pude leer el domain. Se abre en modo avanzado.");
-          rules = [];
-          activeRuleId = "";
-          renderRules();
+          setMsg("ok", "Dominio complejo detectado: se abre en modo avanzado.");
+          // Keep a blank visual tree (not used when advanced is ON).
+          root = newGroup("AND");
+          activeGroupId = root.id;
+          renderTree();
         }
       }
 
@@ -532,12 +684,22 @@
             allFields = (res || []).slice();
             loaded = true;
             renderFields();
+
             // Re-infer rule types now that we have fields.
-            for (const r of rules) {
-              const f = fieldByName(r.fieldName);
-              if (f) r.type = f.type || r.type || "";
-            }
-            renderRules();
+            (function walk(node) {
+              if (!node) return;
+              if (node.kind === "rule") {
+                const f = fieldByName(node.fieldName);
+                if (f) node.type = f.type || node.type || "";
+                if (node.type === "selection" && f && f.selection && f.selection.length && (node.value === "" || node.value === null || node.value === undefined)) {
+                  node.value = f.selection[0].value;
+                }
+              } else if (node.kind === "group") {
+                for (const ch of node.children || []) walk(ch);
+              }
+            })(root);
+
+            renderTree();
             $("btnLoad").disabled = false;
           })
           .withFailureHandler((e) => {
@@ -559,17 +721,45 @@
       });
       $("btnLoad").addEventListener("click", loadFields);
       $("q").addEventListener("input", renderFields);
-      $("combine").addEventListener("change", () => renderRules());
-      $("btnAddRule").addEventListener("click", () => {
-        const r = { id: uid(), fieldName: "", type: "", op: "=", value: "" };
-        rules.push(r);
-        activeRuleId = r.id;
-        renderRules();
+      $("btnSelectRoot").addEventListener("click", () => setActiveGroup(root.id));
+
+      function addGroupTo(groupId) {
+        const g = findNode(root, groupId);
+        if (!g || g.kind !== "group") return;
+        const depth = depthOf(root, groupId, 1);
+        if (depth >= MAX_DEPTH) return setMsg("err", "Max nivel alcanzado.");
+        const ng = newGroup("AND");
+        g.children.push(ng);
+        setActiveGroup(ng.id);
+      }
+
+      function addRuleTo(groupId) {
+        const g = findNode(root, groupId);
+        if (!g || g.kind !== "group") return;
+        g.children.push(newRule(""));
+        renderTree();
+      }
+
+      $("btnAddGroup").addEventListener("click", () => addGroupTo(activeGroupId));
+      $("btnAddRule").addEventListener("click", () => addRuleTo(activeGroupId));
+      $("btnClearAll").addEventListener("click", () => {
+        root = newGroup("AND");
+        activeGroupId = root.id;
+        $("useAdvanced").checked = false;
+        $("domainAdvanced").value = "";
+        setMsg("ok", "");
+        renderTree();
       });
-      $("btnClearRules").addEventListener("click", () => {
-        rules = [];
-        activeRuleId = "";
-        renderRules();
+
+      $("useAdvanced").addEventListener("change", () => {
+        const on = $("useAdvanced").checked;
+        if (!on) {
+          // Try to convert advanced JSON into visual tree; re-enables advanced on failure.
+          tryInitFromDomainString($("domainAdvanced").value || "");
+        } else {
+          // Keep whatever preview was computed as a starting point for manual edits.
+          if (!String($("domainAdvanced").value || "").trim()) $("domainAdvanced").value = $("domainPreview").value || "";
+        }
       });
 
       document.body.addEventListener("click", (ev) => {
@@ -577,10 +767,24 @@
         const action = btn ? btn.getAttribute("data-action") : "";
         const id = btn ? btn.getAttribute("data-id") : "";
         if (!action) return;
-        if (action === "rm") {
-          rules = rules.filter((r) => r.id !== id);
-          if (activeRuleId === id) activeRuleId = rules.length ? rules[rules.length - 1].id : "";
-          renderRules();
+        if (action === "select_group") return setActiveGroup(id);
+        if (action === "add_rule") return addRuleTo(id);
+        if (action === "add_group") return addGroupTo(id);
+        if (action === "rm_rule") {
+          const parent = findParent(root, id, null);
+          if (!parent || parent.kind !== "group") return;
+          parent.children = (parent.children || []).filter((x) => x.id !== id);
+          renderTree();
+          return;
+        }
+        if (action === "rm_group") {
+          if (id === root.id) return;
+          const parent = findParent(root, id, null);
+          if (!parent || parent.kind !== "group") return;
+          parent.children = (parent.children || []).filter((x) => x.id !== id);
+          if (activeGroupId === id) activeGroupId = parent.id;
+          renderTree();
+          return;
         }
       });
 
@@ -603,17 +807,11 @@
 
       // Init
       $("subtitle").textContent = `${INITIAL.connectionTitle || ""} | ${INITIAL.model || ""}`;
-      $("domainAdvanced").value = String(INITIAL.currentDomain || "").trim();
-      function updateTitle() {
-        const mode = String($("combine").value || "AND").toUpperCase();
-        $("rulesTitle").textContent = "Reglas (" + (mode === "OR" ? "OR" : "AND") + ")";
-      }
-      $("combine").addEventListener("change", updateTitle);
-      updateTitle();
-      // Load fields automatically (so selection fields work).
-      loadFields();
-      // Seed rules after fields load; but keep a best-effort init now too.
+      // Build initial tree from current domain (or fallback to Advanced if it's too complex).
       tryInitFromDomainString(INITIAL.currentDomain || "");
+      // Load fields automatically (so selection/labels work).
+      loadFields();
     </script>
   </body>
 </html>
+

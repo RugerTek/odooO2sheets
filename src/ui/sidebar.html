@@ -373,7 +373,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10b";
+      const UI_BUILD = "2026-02-10c";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -1084,6 +1084,7 @@
             const terms = parsed.filter((x) => typeof x !== "string");
             return terms.length ? `${terms.length} regla(s) (OR).` : "Sin filtros.";
           }
+          if (parsed.some((x) => x === "&" || x === "|")) return "Filtro con grupos (visual).";
           return "Filtro avanzado (JSON).";
         } catch {
           return "JSON invalido (corregir en Avanzado).";
