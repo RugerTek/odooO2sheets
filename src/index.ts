@@ -4,6 +4,7 @@ import {
   api_createDatasource,
   api_deleteDatasource,
   api_deleteConnection,
+  api_applyDraftToDatasource,
   api_clearDraftExtraction,
   api_getCompanies,
   api_getBootstrap,
@@ -81,6 +82,7 @@ function showSidebar(): void {
 (globalThis as any).api_setDraftFields = api_setDraftFields;
 (globalThis as any).api_setDraftDomain = api_setDraftDomain;
 (globalThis as any).api_clearDraftExtraction = api_clearDraftExtraction;
+(globalThis as any).api_applyDraftToDatasource = api_applyDraftToDatasource;
 
 (globalThis as any).ui_openModelPickerDialog = ui_openModelPickerDialog;
 (globalThis as any).ui_openColumnsPickerDialog = ui_openColumnsPickerDialog;

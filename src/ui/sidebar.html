@@ -1884,16 +1884,28 @@
           const connId = ($("d_conn") && $("d_conn").value) ? $("d_conn").value : ds.connectionId;
           const model = ($("ds_model").value || "").trim() || ds.odooModel;
           const companyId = ($("d_company") && $("d_company").value) ? Number($("d_company").value) : undefined;
-          const prev = draftUpdatedAt;
           setStatus("info", "Abriendo selector de columnas...");
           syncDraftToDatasource(ds, () => {
+            const prev = draftUpdatedAt; // baseline AFTER syncing draft to the datasource
             runServer(
               "ui_openColumnsPickerDialog",
               [connId, model, companyId],
               () => {
                 pollDraftChange(prev, () => {
-                  setStatus("ok", "Columnas actualizadas (pendiente guardar cambios).");
-                  render();
+                  setStatus("info", "Aplicando columnas a la extraccion...");
+                  runServer(
+                    "api_applyDraftToDatasource",
+                    [{ datasourceId: id }],
+                    () => {
+                      setStatus("ok", "Columnas guardadas.");
+                      requestBootstrap(120);
+                    },
+                    (e) => {
+                      const msg = (e && (e.message || String(e))) || "Error";
+                      setStatus("err", "No pude guardar columnas.", msg);
+                      requestBootstrap(120);
+                    }
+                  );
                 });
               },
               (e) => {
@@ -1912,17 +1924,29 @@
           const connId = ($("d_conn") && $("d_conn").value) ? $("d_conn").value : ds.connectionId;
           const model = ($("ds_model").value || "").trim() || ds.odooModel;
           const companyId = ($("d_company") && $("d_company").value) ? Number($("d_company").value) : undefined;
-          const prev = draftUpdatedAt;
           const curDomain = ($("d_domain") && $("d_domain").value) ? $("d_domain").value : (ds.domain || "");
           setStatus("info", "Abriendo editor de filtros...");
           syncDraftToDatasource(ds, () => {
+            const prev = draftUpdatedAt; // baseline AFTER syncing draft to the datasource
             runServer(
               "ui_openFilterBuilderDialog",
               [connId, model, curDomain, companyId],
               () => {
                 pollDraftChange(prev, () => {
-                  setStatus("ok", "Filtros actualizados (pendiente guardar cambios).");
-                  render();
+                  setStatus("info", "Aplicando filtros a la extraccion...");
+                  runServer(
+                    "api_applyDraftToDatasource",
+                    [{ datasourceId: id }],
+                    () => {
+                      setStatus("ok", "Filtros guardados.");
+                      requestBootstrap(120);
+                    },
+                    (e) => {
+                      const msg = (e && (e.message || String(e))) || "Error";
+                      setStatus("err", "No pude guardar filtros.", msg);
+                      requestBootstrap(120);
+                    }
+                  );
                 });
               },
               (e) => {

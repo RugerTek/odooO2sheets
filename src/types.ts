@@ -56,6 +56,8 @@ export interface Datasource {
   documentId: string; // SpreadsheetApp.getActive().getId()
   title?: string; // optional friendly name shown in UI
   sheetName: string;
+  // Stable identifier so refresh continues working even if the user renames the sheet tab.
+  sheetId?: number;
   connectionId: ConnectionId;
   odooModel: string;
   fields: DatasourceField[];

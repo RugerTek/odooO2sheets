@@ -112,6 +112,43 @@ export function api_clearDraftExtraction(): { ok: true } {
   return { ok: true };
 }
 
+// Apply the current draft (model/fields/domain) into a saved datasource.
+// This makes "Guardar" inside dialogs take effect immediately for non-technical users.
+export function api_applyDraftToDatasource(input: { datasourceId: string }): Datasource {
+  const existing = getDatasource(input.datasourceId);
+  if (!existing) throw new Error("Datasource not found.");
+
+  const draft = getDraftExtraction();
+
+  const connectionId = String(draft.connectionId || existing.connectionId);
+  const odooModel = String((draft.model || existing.odooModel) as any).trim();
+  const fieldsRaw = (draft.fields && draft.fields.length ? draft.fields : existing.fields) || [];
+  const fields = fieldsRaw
+    .filter((f) => f && (f as any).fieldName)
+    .map((f, idx) => ({
+      fieldName: String((f as any).fieldName),
+      label: String(((f as any).label || (f as any).fieldName) as any),
+      order: idx,
+    }));
+
+  const domain = (typeof draft.domain === "string" ? draft.domain : (existing.domain || "")).trim() || undefined;
+
+  return api_updateDatasource({
+    datasourceId: existing.id,
+    title: existing.title,
+    sheetName: existing.sheetName,
+    connectionId,
+    odooModel,
+    fields,
+    limit: existing.limit,
+    domain,
+    orderBy: existing.orderBy,
+    writeMode: existing.writeMode,
+    header: Boolean(existing.header),
+    companyId: existing.companyId,
+  });
+}
+
 export function api_testOdooUrl(input: { odooUrl: string }): any {
   const res = getVersionInfo(input.odooUrl);
   if (!res?.ok) throw new Error(res?.hint || "Odoo URL not reachable. Check the URL.");
