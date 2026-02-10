@@ -82,9 +82,8 @@
 
       .list { display: flex; flex-direction: column; gap: 8px; }
       .item { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(15,23,42,0.02); }
-      .title { font-weight: 600; }
-      .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-      .title, .meta, .hint { word-break: break-word; }
+      .title { font-weight: 600; overflow-wrap: break-word; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
       .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
       .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border: 1px solid var(--line); padding: 1px 6px; border-radius: 7px; background: rgba(15,23,42,0.02); }
       .iconBtn {
@@ -399,7 +398,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10f";
+      const UI_BUILD = "2026-02-10g";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -885,8 +884,8 @@
               </div>
 
               <div class="sep"></div>
-              <div class="row">
-                <div class="meta col"><b>Columnas</b></div>
+              <div class="row wrap">
+                <div class="meta col full"><b>Columnas</b></div>
                 <button class="primary" data-action="pick_columns_detail" data-id="${dsCurrent.id}" type="button">Editar columnas</button>
               </div>
               <div class="pills" style="margin-top:8px;">
