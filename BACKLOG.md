@@ -39,10 +39,10 @@ Este backlog esta pensado para marcar OK / NO-OK con checkboxes.
 ## UX / Pulido
 - [ ] Conexiones: al editar/usar conexion, que el flujo para editar columnas sea consistente y no confuso (simplificar)
 - [ ] UI: arreglar quiebres visuales (overflow de textos largos, responsive)
-- [ ] Columnas: input "Agregar por path" (ej: move_id.partner_id....display_name) que auto-seleccione la columna si existe (hasta 3 niveles)
+- [x] Columnas: input "Agregar por path" (ej: move_id.partner_id....display_name) que auto-seleccione la columna si existe (hasta 3 niveles)
 - [ ] Columnas: mejorar feedback cuando "Cargar columnas" / "Actualizar sample" falla (error mas claro)
-- [ ] Sidebar: loader fijo arriba para feedback mientras procesa (runServer)
-- [ ] Ocultar info tecnica por defecto (doc id, etc) y dejarla en "Debug" / "Info tecnica"
+- [x] Sidebar: loader fijo arriba para feedback mientras procesa (runServer)
+- [x] Ocultar info tecnica por defecto (doc id, etc) y dejarla en "Debug" / "Info tecnica"
 - [ ] Documentacion: como usarlo en otras planillas (template vs add-on publicado)
 
 ## Infra / Repo
