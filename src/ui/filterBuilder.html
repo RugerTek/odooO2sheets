@@ -443,6 +443,21 @@
         return toks;
       }
 
+      function updateDomainPreviewOnly() {
+        const dom = computeDomainArray();
+        $("domainPreview").value = JSON.stringify(dom);
+        if (!$("useAdvanced").checked) $("domainAdvanced").value = JSON.stringify(dom, null, 0);
+      }
+
+      let previewTimer = null;
+      function requestDomainPreviewUpdate() {
+        if (previewTimer) clearTimeout(previewTimer);
+        previewTimer = setTimeout(() => {
+          previewTimer = null;
+          updateDomainPreviewOnly();
+        }, 120);
+      }
+
       function renderFields() {
         const q = String($("q").value || "").trim().toLowerCase();
         const box = $("fields");
@@ -529,7 +544,10 @@
             const s = document.createElement("select");
             s.innerHTML = `<option value="true">true</option><option value="false">false</option>`;
             s.value = String(Boolean(node.value));
-            s.addEventListener("change", () => (node.value = s.value === "true"));
+            s.addEventListener("change", () => {
+              node.value = s.value === "true";
+              updateDomainPreviewOnly();
+            });
             slot.appendChild(s);
           } else if (node.type === "selection" && f && f.selection && f.selection.length) {
             const s = document.createElement("select");
@@ -540,26 +558,38 @@
               s.appendChild(opt);
             }
             s.value = String(node.value || f.selection[0].value);
-            s.addEventListener("change", () => (node.value = s.value));
+            s.addEventListener("change", () => {
+              node.value = s.value;
+              updateDomainPreviewOnly();
+            });
             slot.appendChild(s);
           } else if (node.type === "date") {
             const inp = document.createElement("input");
             inp.type = "date";
             inp.value = String(node.value || "");
-            inp.addEventListener("input", () => (node.value = inp.value));
+            inp.addEventListener("input", () => {
+              node.value = inp.value;
+              requestDomainPreviewUpdate();
+            });
             slot.appendChild(inp);
           } else if (node.type === "datetime") {
             const inp = document.createElement("input");
             inp.type = "datetime-local";
             const cur = String(node.value || "");
             inp.value = cur.includes(" ") ? cur.replace(" ", "T").slice(0, 16) : cur;
-            inp.addEventListener("input", () => (node.value = inp.value));
+            inp.addEventListener("input", () => {
+              node.value = inp.value;
+              requestDomainPreviewUpdate();
+            });
             slot.appendChild(inp);
           } else {
             const inp = document.createElement("input");
             inp.placeholder = (node.op === "in" || node.op === "not in") ? "separado por coma (ej: 1,2,3)" : "valor";
             inp.value = String(node.value || "");
-            inp.addEventListener("input", () => (node.value = inp.value));
+            inp.addEventListener("input", () => {
+              node.value = inp.value;
+              requestDomainPreviewUpdate();
+            });
             slot.appendChild(inp);
           }
 
@@ -633,9 +663,7 @@
         box.innerHTML = "";
         box.appendChild(renderNode(root, 1));
 
-        const dom = computeDomainArray();
-        $("domainPreview").value = JSON.stringify(dom);
-        if (!$("useAdvanced").checked) $("domainAdvanced").value = JSON.stringify(dom, null, 0);
+        updateDomainPreviewOnly();
       }
 
       function escapeHtml(s) {
