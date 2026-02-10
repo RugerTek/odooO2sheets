@@ -7,14 +7,18 @@ function makeTemplate(file: string, title: string, initial: Record<string, unkno
   return tpl.evaluate().setTitle(title).setWidth(920).setHeight(640);
 }
 
-export function ui_openModelPickerDialog(connectionId: string): void {
+export function ui_openModelPickerDialog(connectionId: string, companyId?: number): void {
   const conn = getConnection(connectionId);
   if (!conn) throw new Error("Connection not found.");
-  const html = makeTemplate("ui/modelPicker", "Seleccionar tabla", { connectionId: conn.id, connectionTitle: conn.title });
+  const html = makeTemplate("ui/modelPicker", "Seleccionar tabla", {
+    connectionId: conn.id,
+    connectionTitle: conn.title,
+    companyId: companyId === undefined || companyId === null ? undefined : Number(companyId),
+  });
   SpreadsheetApp.getUi().showModalDialog(html, "Seleccionar tabla");
 }
 
-export function ui_openColumnsPickerDialog(connectionId: string, model: string): void {
+export function ui_openColumnsPickerDialog(connectionId: string, model: string, companyId?: number): void {
   const conn = getConnection(connectionId);
   if (!conn) throw new Error("Connection not found.");
   const m = (model || "").trim();
@@ -23,6 +27,7 @@ export function ui_openColumnsPickerDialog(connectionId: string, model: string):
   const html = makeTemplate("ui/columnsPicker", "Seleccionar columnas", {
     connectionId: conn.id,
     connectionTitle: conn.title,
+    companyId: companyId === undefined || companyId === null ? undefined : Number(companyId),
     model: m,
     modelName: draft.model === m ? draft.modelName || m : m,
     selectedFields: draft.model === m ? (draft.fields || []) : [],
@@ -51,4 +56,18 @@ export function ui_openScheduleDialog(datasourceId: string): void {
     defaultTimezone: tz,
   });
   SpreadsheetApp.getUi().showModalDialog(html, "Timer");
+}
+
+export function ui_openHistoryDialog(datasourceId: string): void {
+  const ds = getDatasource(datasourceId);
+  if (!ds) throw new Error("Datasource not found.");
+  const conn = getConnection(ds.connectionId);
+  const html = makeTemplate("ui/runHistory", "Historial", {
+    datasourceId: ds.id,
+    title: ds.title || "",
+    sheetName: ds.sheetName,
+    model: ds.odooModel,
+    connectionTitle: conn ? conn.title : ds.connectionId,
+  });
+  SpreadsheetApp.getUi().showModalDialog(html, "Historial");
 }

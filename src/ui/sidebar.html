@@ -159,12 +159,21 @@
         <h2>3) Crear Extraccion</h2>
         <div class="grid2">
           <div>
+            <label>Nombre (opcional)</label>
+            <input id="ds_title" placeholder="Ej: Ventas (res.partner)" />
+
             <label>Hoja destino</label>
             <select id="ds_sheet"></select>
           </div>
           <div>
             <label>Conexion</label>
             <select id="ds_conn"></select>
+
+            <div id="dsCompanyBox" style="display:none; margin-top:10px;">
+              <label>Company (opcional)</label>
+              <select id="ds_company"></select>
+              <div class="hint">Si lo dejas en "Default", usa la company de la conexion (Login).</div>
+            </div>
           </div>
         </div>
 
@@ -229,13 +238,14 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09l";
+      const UI_BUILD = "2026-02-09m";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
       let chosenModel = { model: "", name: "" };
       let editingDatasourceId = "";
       let companyByConn = {}; // connId -> { companies: [{id,name}], companyId }
+      let dsCompanies = []; // companies for extraction editor dropdown
 
       function setStatus(kind, text, detail) {
         const bar = $("statusBar");
@@ -290,6 +300,34 @@
         });
         const current = entry.companyId ? String(entry.companyId) : "";
         if (current) sel.value = current;
+      }
+
+      function renderDsCompanyBox(connId, selectedCompanyId) {
+        const box = $("dsCompanyBox");
+        const sel = $("ds_company");
+        if (!box || !sel) return;
+        const entry = companyByConn[connId];
+        const companies = entry && entry.companies ? entry.companies : [];
+        dsCompanies = companies || [];
+        if (!companies || companies.length <= 1) {
+          box.style.display = "none";
+          sel.innerHTML = "";
+          return;
+        }
+        box.style.display = "block";
+        sel.innerHTML = "";
+        const opt0 = document.createElement("option");
+        opt0.value = "";
+        opt0.textContent = "Default (de la conexion)";
+        sel.appendChild(opt0);
+        companies.forEach((c) => {
+          const o = document.createElement("option");
+          o.value = String(c.id);
+          o.textContent = `${c.name} (#${c.id})`;
+          sel.appendChild(o);
+        });
+        if (selectedCompanyId) sel.value = String(selectedCompanyId);
+        else sel.value = "";
       }
 
       function runServer(fnName, args, onOk, onErr, opts) {
@@ -475,15 +513,23 @@
             const autoMeta = ds.schedulerEnabled
               ? `Timezone: ${(ds.schedulerConfig && ds.schedulerConfig.timezone) || "?"} | Horas: ${((ds.schedulerConfig && ds.schedulerConfig.hours) || []).join(",") || "todas"}`
               : "Auto refresh desactivado.";
+            const nextRun = ds.nextRunAt ? `Proxima: ${ds.nextRunAt}` : "";
+            const title = ds.title ? ds.title : ds.sheetName;
+            const company = ds.companyId ? `Company: #${ds.companyId}` : "";
             it.innerHTML = `
-              <div class="title">${escapeHtml(ds.sheetName)} <span class="pill">${escapeHtml(ds.odooModel)}</span></div>
+              <div class="title">${escapeHtml(title)} <span class="pill">${escapeHtml(ds.odooModel)}</span></div>
+              <div class="meta">Hoja: ${escapeHtml(ds.sheetName)} ${company ? "| " + escapeHtml(company) : ""}</div>
               <div class="meta">Campos: ${escapeHtml(ds.fields.map((f) => f.fieldName).join(", "))}</div>
               <div class="meta">${escapeHtml(auto)} | ${escapeHtml(autoMeta)}</div>
+              ${nextRun ? `<div class="meta">${escapeHtml(nextRun)}</div>` : ""}
               <div class="meta">Ultima ejecucion: ${escapeHtml(last)}</div>
                <div class="row" style="margin-top:8px;">
                  <button class="primary" data-action="refresh" data-id="${ds.id}">Refresh</button>
                  <button data-action="edit" data-id="${ds.id}">Editar</button>
                  <button data-action="schedule" data-id="${ds.id}">Timer</button>
+                 <button data-action="history" data-id="${ds.id}">Historial</button>
+                 <button data-action="duplicate" data-id="${ds.id}">Duplicar</button>
+                 <button data-action="rename" data-id="${ds.id}">Renombrar</button>
                  <button class="danger" data-action="delete" data-id="${ds.id}">Borrar</button>
                </div>
                <div id="ds_item_msg_${ds.id}"></div>
@@ -504,12 +550,15 @@
           (res) => {
             companyByConn[connId] = { companies: res.companies || [], companyId: res.companyId };
             renderCompanyBox(connId);
+            renderDsCompanyBox(connId);
           },
           () => {
             // Ignore if not logged in yet.
             try {
               const box = $("companyBox");
               if (box) box.style.display = "none";
+              const b2 = $("dsCompanyBox");
+              if (b2) b2.style.display = "none";
             } catch (_) {}
           }
         );
@@ -554,6 +603,14 @@
       $("login_conn").addEventListener("change", () => {
         const connId = $("login_conn").value;
         tryLoadCompaniesForConnection(connId);
+      });
+
+      $("ds_conn").addEventListener("change", () => {
+        const connId = $("ds_conn").value;
+        if (!connId) return;
+        tryLoadCompaniesForConnection(connId);
+        // Keep the extraction-level selector in sync (if companies are available).
+        renderDsCompanyBox(connId);
       });
 
       $("login_company").addEventListener("change", () => {
@@ -633,10 +690,11 @@
         const connId = $("ds_conn").value || $("login_conn").value;
         if (!connId) return setStatus("err", "Primero selecciona una conexion y hace login.");
         const prev = draftUpdatedAt;
+        const companyId = $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined;
         setStatus("info", "Abriendo selector de tabla...");
         runServer(
           "ui_openModelPickerDialog",
-          [connId],
+          [connId, companyId],
           () => {
             pollDraftChange(prev, () => {
               // After picking a table, open columns picker automatically (most intuitive flow).
@@ -648,7 +706,7 @@
               setTimeout(() => {
                 runServer(
                   "ui_openColumnsPickerDialog",
-                  [connId, model],
+                  [connId, model, companyId],
                   () => pollDraftChange(prevCols, () => setStatus("ok", "Columnas actualizadas.")),
                   (e) => {
                     const msg = (e && (e.message || String(e))) || "Error";
@@ -671,10 +729,11 @@
         const model = ($("ds_model").value || "").trim();
         if (!model) return setStatus("err", "Primero selecciona una tabla.");
         const prev = draftUpdatedAt;
+        const companyId = $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined;
         setStatus("info", "Abriendo selector de columnas...");
         runServer(
           "ui_openColumnsPickerDialog",
-          [connId, model],
+          [connId, model, companyId],
           () => {
             pollDraftChange(prev, () => setStatus("ok", "Columnas actualizadas."));
           },
@@ -692,6 +751,7 @@
           [],
           () => {
             draftUpdatedAt = "";
+            try { $("ds_title").value = ""; } catch (_) {}
             $("ds_model").value = "";
             chosenModel = { model: "", name: "" };
             selectedFields = [];
@@ -821,6 +881,7 @@
           [
             {
               datasourceId: editingDatasourceId,
+              title: ($("ds_title").value || "").trim(),
               sheetName: sheet,
               connectionId: connId,
               odooModel: model,
@@ -830,6 +891,7 @@
               orderBy: $("ds_order").value,
               writeMode: $("ds_mode").value,
               header: $("ds_header").checked,
+              companyId: $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined,
             },
           ],
           () => {
@@ -872,6 +934,69 @@
           return;
         }
 
+        if (action === "history") {
+          const id = btn.getAttribute("data-id");
+          setStatus("info", "Abriendo historial...", `Datasource: ${id}`);
+          runServer(
+            "ui_openHistoryDialog",
+            [id],
+            () => {
+              setStatus("ok", "Historial abierto.");
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude abrir el historial.", msg);
+            }
+          );
+          return;
+        }
+
+        if (action === "duplicate") {
+          const id = btn.getAttribute("data-id");
+          btn.disabled = true;
+          setStatus("info", "Duplicando extraccion...", `Datasource: ${id}`);
+          runServer(
+            "api_duplicateDatasource",
+            [{ datasourceId: id }],
+            (res) => {
+              setStatus("ok", "Extraccion duplicada.", `Nueva hoja: ${res.sheetName}`);
+              btn.disabled = false;
+              loadBootstrap();
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude duplicar.", msg);
+              btn.disabled = false;
+            }
+          );
+          return;
+        }
+
+        if (action === "rename") {
+          const id = btn.getAttribute("data-id");
+          const ds = (state.datasources || []).find((x) => x.id === id);
+          const prev = ds && ds.title ? ds.title : "";
+          const title = prompt("Nuevo nombre (opcional). Deja vacio para usar el nombre de la hoja:", prev);
+          if (title === null) return;
+          btn.disabled = true;
+          setStatus("info", "Renombrando...", `Datasource: ${id}`);
+          runServer(
+            "api_renameDatasource",
+            [{ datasourceId: id, title }],
+            () => {
+              setStatus("ok", "Nombre guardado.");
+              btn.disabled = false;
+              loadBootstrap();
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude renombrar.", msg);
+              btn.disabled = false;
+            }
+          );
+          return;
+        }
+
         if (action === "edit") {
           const id = btn.getAttribute("data-id");
           const ds = (state.datasources || []).find((x) => x.id === id);
@@ -885,11 +1010,15 @@
           try {
             $("ds_conn").value = ds.connectionId;
           } catch (_) {}
+          try {
+            $("ds_title").value = ds.title || "";
+          } catch (_) {}
           $("ds_limit").value = String(ds.limit || 80);
           $("ds_order").value = ds.orderBy || "";
           $("ds_domain").value = ds.domain || "";
           $("ds_mode").value = ds.writeMode || "REPLACE";
           $("ds_header").checked = Boolean(ds.header);
+          renderDsCompanyBox(ds.connectionId, ds.companyId);
 
           // Sync draft (so dialogs open with current selection).
           const connId = ds.connectionId;

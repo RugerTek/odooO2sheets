@@ -24,13 +24,18 @@ import { materializeValues } from "./materialize";
 export function api_getBootstrap(): {
   context: { spreadsheetId: string; userEmail: string };
   connections: Connection[];
-  datasources: Datasource[];
+  datasources: Array<Datasource & { nextRunAt?: string }>;
   draft: DraftExtraction;
 } {
+  const now = new Date();
   return {
     context: getCurrentContext(),
     connections: listConnections(),
-    datasources: listDatasources(),
+    datasources: listDatasources().map((d) => {
+      const nextRunAt =
+        d.schedulerEnabled && d.schedulerConfig ? computeNextRunAtIso(d.schedulerConfig, now, d) : undefined;
+      return { ...(d as any), nextRunAt };
+    }),
     draft: getDraftExtraction(),
   };
 }
@@ -200,7 +205,7 @@ export function api_setCredential(input: {
   return { ok: true, uid: session.uid, canUseAdvanced: canUseAdvanced(session), companies, companyId };
 }
 
-function getSessionForConnection(connectionId: string): OdooSession {
+function getSessionForConnection(connectionId: string, companyIdOverride?: number): OdooSession {
   const conn = getConnection(connectionId);
   if (!conn) throw new Error("Connection not found.");
 
@@ -216,9 +221,8 @@ function getSessionForConnection(connectionId: string): OdooSession {
   });
 
   // Multi-company pinning (optional).
-  if (conn.companyId) {
-    session.context = { ...(session.context || {}), allowed_company_ids: [conn.companyId] };
-  }
+  const companyId = normalizeCompanyId(companyIdOverride) || conn.companyId;
+  if (companyId) session.context = { ...(session.context || {}), allowed_company_ids: [companyId] };
   return session;
 }
 
@@ -287,8 +291,9 @@ export function api_searchModels(input: {
   query: string;
   module?: string;
   limit?: number;
+  companyId?: number;
 }): Array<{ model: string; name: string; modules?: string }> {
-  const session = getSessionForConnection(input.connectionId);
+  const session = getSessionForConnection(input.connectionId, input.companyId);
   const q = (input.query || "").trim();
   const mod = (input.module || "").trim();
   if (!q && !mod) return [];
@@ -311,8 +316,8 @@ export function api_searchModels(input: {
     .map((r) => ({ model: r.model, name: r.name || r.model, modules: (r as any).modules }));
 }
 
-export function api_listModules(input: { connectionId: string; limit?: number }): Array<{ name: string; title: string; category?: string }> {
-  const session = getSessionForConnection(input.connectionId);
+export function api_listModules(input: { connectionId: string; limit?: number; companyId?: number }): Array<{ name: string; title: string; category?: string }> {
+  const session = getSessionForConnection(input.connectionId, input.companyId);
   const limit = Math.max(1, Math.min(120, Number(input.limit) || 80));
 
   const rows = callKw<Array<{ name: string; shortdesc?: string; category_id?: any }>>(session, {
@@ -335,8 +340,9 @@ export function api_listModules(input: { connectionId: string; limit?: number })
 export function api_getModelFields(input: {
   connectionId: string;
   model: string;
+  companyId?: number;
 }): Array<{ fieldName: string; label: string; type: string; relation?: string; help?: string }> {
-  const session = getSessionForConnection(input.connectionId);
+  const session = getSessionForConnection(input.connectionId, input.companyId);
   const model = input.model.trim();
   if (!model) throw new Error("Model is required.");
 
@@ -370,8 +376,9 @@ export function api_previewRows(input: {
   domain?: string;
   orderBy?: string;
   limit?: number;
+  companyId?: number;
 }): { fields: string[]; rows: Array<Array<string | number | boolean | null>> } {
-  const session = getSessionForConnection(input.connectionId);
+  const session = getSessionForConnection(input.connectionId, input.companyId);
   const model = input.model.trim();
   if (!model) throw new Error("Model is required.");
   const fields = (input.fields || []).map((f) => String(f || "").trim()).filter(Boolean);
@@ -404,6 +411,7 @@ export function api_listSheets(): string[] {
 }
 
 export function api_createDatasource(input: {
+  title?: string;
   sheetName: string;
   connectionId: string;
   odooModel: string;
@@ -414,6 +422,7 @@ export function api_createDatasource(input: {
   orderBy?: string;
   writeMode: "REPLACE" | "APPEND";
   header: boolean;
+  companyId?: number;
 }): Datasource {
   const ctx = getCurrentContext();
   const conn = getConnection(input.connectionId);
@@ -445,6 +454,7 @@ export function api_createDatasource(input: {
   const ds: Datasource = {
     id: uuidV4(),
     documentId: ctx.spreadsheetId,
+    title: (input.title || "").trim() || undefined,
     sheetName: input.sheetName.trim(),
     connectionId: input.connectionId,
     odooModel: model,
@@ -454,6 +464,7 @@ export function api_createDatasource(input: {
     limit: Math.max(1, Number(input.limit) || 80),
     writeMode: input.writeMode,
     header: Boolean(input.header),
+    companyId: normalizeCompanyId(input.companyId),
     schedulerEnabled: false,
     createdBy: ctx.userEmail,
     createdAt: nowIso(),
@@ -465,6 +476,7 @@ export function api_createDatasource(input: {
 
 export function api_updateDatasource(input: {
   datasourceId: string;
+  title?: string;
   sheetName: string;
   connectionId: string;
   odooModel: string;
@@ -474,6 +486,7 @@ export function api_updateDatasource(input: {
   orderBy?: string;
   writeMode: "REPLACE" | "APPEND";
   header: boolean;
+  companyId?: number;
 }): Datasource {
   const existing = getDatasource(input.datasourceId);
   if (!existing) throw new Error("Datasource not found.");
@@ -510,11 +523,13 @@ export function api_updateDatasource(input: {
     Number(existing.limit) !== Math.max(1, Number(input.limit) || 80) ||
     existing.writeMode !== input.writeMode ||
     Boolean(existing.header) !== Boolean(input.header) ||
+    (existing.companyId || "") !== (normalizeCompanyId(input.companyId) || "") ||
     JSON.stringify(existing.fields.map((f) => f.fieldName)) !== JSON.stringify(dsFields.map((f) => f.fieldName));
 
   const connChanged = existing.connectionId !== input.connectionId;
 
   existing.sheetName = sheetName;
+  existing.title = (input.title || "").trim() || undefined;
   existing.connectionId = input.connectionId;
   existing.odooModel = model;
   existing.fields = dsFields;
@@ -523,6 +538,7 @@ export function api_updateDatasource(input: {
   existing.limit = Math.max(1, Number(input.limit) || 80);
   existing.writeMode = input.writeMode;
   existing.header = Boolean(input.header);
+  existing.companyId = normalizeCompanyId(input.companyId);
 
   // If connection changes, disable scheduler to avoid silent auth failures.
   if (connChanged && existing.schedulerEnabled) {
@@ -582,6 +598,98 @@ export function api_deleteDatasource(input: { datasourceId: string }): { ok: tru
   if (!ds) throw new Error("Datasource not found.");
   deleteDatasource(ds.id);
   return { ok: true };
+}
+
+export function api_renameDatasource(input: { datasourceId: string; title?: string }): Datasource {
+  const ds = getDatasource(input.datasourceId);
+  if (!ds) throw new Error("Datasource not found.");
+  ds.title = (input.title || "").trim() || undefined;
+  touchUpdatedAt(ds);
+  upsertDatasource(ds);
+  return ds;
+}
+
+export function api_duplicateDatasource(input: { datasourceId: string }): Datasource {
+  const src = getDatasource(input.datasourceId);
+  if (!src) throw new Error("Datasource not found.");
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error("No active spreadsheet.");
+
+  // Create a new sheet name to avoid accidental overwrite.
+  const existingNames = new Set(ss.getSheets().map((s) => s.getName()));
+  const base = `${src.sheetName} (copy)`;
+  let name = base;
+  let n = 2;
+  while (existingNames.has(name) && n < 50) {
+    name = `${base} ${n}`;
+    n++;
+  }
+  if (!existingNames.has(name)) {
+    ss.insertSheet(name);
+  }
+
+  const ctx = getCurrentContext();
+  const ds: Datasource = {
+    ...(src as any),
+    id: uuidV4(),
+    documentId: ctx.spreadsheetId,
+    sheetName: name,
+    title: src.title ? `${src.title} (copy)` : undefined,
+    schedulerEnabled: false,
+    schedulerConfig: undefined,
+    lastRun: undefined,
+    runHistory: [],
+    createdBy: ctx.userEmail,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  upsertDatasource(ds);
+  return ds;
+}
+
+export function api_getRunHistory(input: { datasourceId: string }): { datasource: Datasource; history: any[] } {
+  const ds = getDatasource(input.datasourceId);
+  if (!ds) throw new Error("Datasource not found.");
+  return { datasource: ds, history: (ds.runHistory || []).slice(0, 20) };
+}
+
+function normalizeCompanyId(v: any): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.trunc(n);
+}
+
+function computeNextRunAtIso(cfg: SchedulerConfig, from: Date, ds?: any): string | undefined {
+  // Scheduler runs hourly; we search next 14 days, hour by hour, in cfg.timezone.
+  const tz = String((cfg && (cfg as any).timezone) || Session.getScriptTimeZone() || "UTC");
+  const maxHours = 24 * 14;
+
+  const start = new Date(from.getTime());
+  start.setMinutes(0, 0, 0);
+  // start from next hour to avoid "already missed" confusion.
+  start.setHours(start.getHours() + 1);
+
+  for (let i = 0; i < maxHours; i++) {
+    const d = new Date(start.getTime() + i * 60 * 60 * 1000);
+    const hour = Number(Utilities.formatDate(d, tz, "H"));
+    const day = Number(Utilities.formatDate(d, tz, "d"));
+    const month = Number(Utilities.formatDate(d, tz, "M"));
+    const wday = Number(Utilities.formatDate(d, tz, "u")); // 1..7
+
+    if (Array.isArray((cfg as any).hours) && (cfg as any).hours.length > 0 && !(cfg as any).hours.includes(hour)) continue;
+    if (Array.isArray((cfg as any).daysOfMonth) && (cfg as any).daysOfMonth.length > 0 && !(cfg as any).daysOfMonth.includes(day)) continue;
+    if (Array.isArray((cfg as any).months) && (cfg as any).months.length > 0 && !(cfg as any).months.includes(month)) continue;
+    if (Array.isArray((cfg as any).weekdays) && (cfg as any).weekdays.length > 0 && !(cfg as any).weekdays.includes(wday)) continue;
+
+    // Return ISO-like string in timezone for display (not a true ISO moment, but user-facing).
+    const local = Utilities.formatDate(d, tz, "yyyy-MM-dd HH:00");
+    const extra = ds && ds.title ? ` (${ds.title})` : "";
+    void extra;
+    return `${local} ${tz}`;
+  }
+  return undefined;
 }
 
 export { refreshDatasourceById };

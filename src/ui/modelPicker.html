@@ -181,7 +181,7 @@
         $("results").innerHTML = "<div class='muted'>Buscando...</div>";
         runServer(
           "api_searchModels",
-          [{ connectionId: INITIAL.connectionId, query: q, module: currentModule, limit: 60 }],
+          [{ connectionId: INITIAL.connectionId, companyId: INITIAL.companyId, query: q, module: currentModule, limit: 60 }],
           (items) => {
             render(items);
             $("btnSearch").disabled = false;
@@ -243,7 +243,7 @@
 
       runServer(
         "api_listModules",
-        [{ connectionId: INITIAL.connectionId, limit: 80 }],
+        [{ connectionId: INITIAL.connectionId, companyId: INITIAL.companyId, limit: 80 }],
         (items) => {
           modules = (items || []).slice().sort((a, b) => String(a.title).localeCompare(String(b.title)));
           renderApps();

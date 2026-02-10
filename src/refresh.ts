@@ -31,9 +31,8 @@ export function refreshDatasourceById(
       username: cred.odooUsername,
       password: cred.secret,
     });
-    if (conn.companyId) {
-      session.context = { ...(session.context || {}), allowed_company_ids: [conn.companyId] };
-    }
+    const companyId = (ds as any).companyId || conn.companyId;
+    if (companyId) session.context = { ...(session.context || {}), allowed_company_ids: [companyId] };
 
     const domain = parseDomain(ds.domain);
     const baseFields = uniqStrings(ds.fields.map((f) => baseFieldName(f.fieldName)).filter(Boolean));
@@ -61,24 +60,28 @@ export function refreshDatasourceById(
     const values = materializeValues({ session, baseModel: ds.odooModel, baseRows: result, fieldSpecs });
 
     const rowsFetched = writeTable(ds, headers, values);
-    ds.lastRun = {
+    const lastRun = {
       status: "OK",
       at: new Date().toISOString(),
       rows: rowsFetched,
       durationMs: Date.now() - started,
-    };
+    } as const;
+    ds.lastRun = lastRun;
+    ds.runHistory = [lastRun, ...((ds.runHistory || []) as any[])].slice(0, 10);
     touchUpdatedAt(ds);
     upsertDatasource(ds);
     return { rowsFetched };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    ds.lastRun = {
+    const lastRun = {
       status: "ERROR",
       at: new Date().toISOString(),
       rows: 0,
       durationMs: Date.now() - started,
       error: msg,
-    };
+    } as const;
+    ds.lastRun = lastRun;
+    ds.runHistory = [lastRun, ...((ds.runHistory || []) as any[])].slice(0, 10);
     touchUpdatedAt(ds);
     upsertDatasource(ds);
     throw e;

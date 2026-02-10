@@ -28,6 +28,20 @@ export function loadDocState(): AppStateDoc {
   // Basic normalization.
   parsed.connections ||= [];
   parsed.datasources ||= [];
+  // Normalize optional fields so UI can assume presence.
+  parsed.connections = parsed.connections.map((c: any) => ({
+    ...c,
+    storeConnections: Boolean(c.storeConnections),
+    shareCredentials: Boolean(c.shareCredentials),
+    companyId: c.companyId === undefined || c.companyId === null ? undefined : Number(c.companyId),
+  }));
+  parsed.datasources = parsed.datasources.map((d: any) => ({
+    ...d,
+    header: Boolean(d.header),
+    schedulerEnabled: Boolean(d.schedulerEnabled),
+    companyId: d.companyId === undefined || d.companyId === null ? undefined : Number(d.companyId),
+    runHistory: Array.isArray(d.runHistory) ? d.runHistory : [],
+  }));
   return parsed;
 }
 

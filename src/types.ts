@@ -54,6 +54,7 @@ export interface LastRun {
 export interface Datasource {
   id: DatasourceId;
   documentId: string; // SpreadsheetApp.getActive().getId()
+  title?: string; // optional friendly name shown in UI
   sheetName: string;
   connectionId: ConnectionId;
   odooModel: string;
@@ -63,9 +64,12 @@ export interface Datasource {
   limit: number;
   writeMode: WriteMode;
   header: boolean;
+  // Optional: override the connection's pinned company (multi-company).
+  companyId?: number;
   schedulerEnabled: boolean;
   schedulerConfig?: SchedulerConfig;
   lastRun?: LastRun;
+  runHistory?: LastRun[]; // newest first, capped
   createdBy: string;
   createdAt: string; // ISO
   updatedAt: string; // ISO

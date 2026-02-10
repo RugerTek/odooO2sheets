@@ -7,10 +7,13 @@ import {
   api_getBootstrap,
   api_getDraftExtraction,
   api_getModelFields,
+  api_getRunHistory,
+  api_duplicateDatasource,
   api_listModules,
   api_listSheets,
   api_previewRows,
   api_refreshDatasource,
+  api_renameDatasource,
   api_searchModels,
   api_setConnectionCompany,
   api_setDraftFields,
@@ -23,7 +26,7 @@ import {
   refreshDatasourceById,
 } from "./service";
 import { runSchedulerTick_ } from "./scheduler";
-import { ui_openColumnsPickerDialog, ui_openModelPickerDialog, ui_openScheduleDialog } from "./uiDialogs";
+import { ui_openColumnsPickerDialog, ui_openHistoryDialog, ui_openModelPickerDialog, ui_openScheduleDialog } from "./uiDialogs";
 
 function onOpen(): void {
   SpreadsheetApp.getUi()
@@ -61,6 +64,9 @@ function showSidebar(): void {
 (globalThis as any).api_setDatasourceSchedule = api_setDatasourceSchedule;
 (globalThis as any).api_deleteDatasource = api_deleteDatasource;
 (globalThis as any).api_updateDatasource = api_updateDatasource;
+(globalThis as any).api_duplicateDatasource = api_duplicateDatasource;
+(globalThis as any).api_renameDatasource = api_renameDatasource;
+(globalThis as any).api_getRunHistory = api_getRunHistory;
 (globalThis as any).api_searchModels = api_searchModels;
 (globalThis as any).api_getModelFields = api_getModelFields;
 (globalThis as any).api_previewRows = api_previewRows;
@@ -73,5 +79,6 @@ function showSidebar(): void {
 (globalThis as any).ui_openModelPickerDialog = ui_openModelPickerDialog;
 (globalThis as any).ui_openColumnsPickerDialog = ui_openColumnsPickerDialog;
 (globalThis as any).ui_openScheduleDialog = ui_openScheduleDialog;
+(globalThis as any).ui_openHistoryDialog = ui_openHistoryDialog;
 
 (globalThis as any).runSchedulerTick_ = runSchedulerTick_;

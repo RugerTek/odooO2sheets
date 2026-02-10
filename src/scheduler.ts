@@ -70,7 +70,9 @@ export function runSchedulerTick_(): void {
     } catch (e) {
       // Best effort: keep ticking other datasources.
       const msg = e instanceof Error ? e.message : String(e);
-      ds.lastRun = { status: "ERROR", at: new Date().toISOString(), rows: 0, durationMs: 0, error: msg };
+      const lastRun = { status: "ERROR", at: new Date().toISOString(), rows: 0, durationMs: 0, error: msg } as const;
+      (ds as any).lastRun = lastRun;
+      (ds as any).runHistory = [lastRun, ...(((ds as any).runHistory || []) as any[])].slice(0, 10);
       upsertDatasource(ds);
     }
   }

@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --muted: #475569;
+        --text: #0f172a;
+        --line: rgba(15, 23, 42, 0.12);
+        --ok: #16a34a;
+        --err: #dc2626;
+      }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+      .wrap { padding: 14px; }
+      .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      h1 { font-size: 16px; margin: 0; }
+      .muted { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      button { border: 1px solid rgba(15, 23, 42, 0.14); background: rgba(15, 23, 42, 0.04); color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+      button.primary { border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.10); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .msg { margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(15,23,42,0.02); }
+      .msg.ok { border-color: rgba(22,163,74,0.35); }
+      .msg.err { border-color: rgba(220,38,38,0.35); }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+      th, td { border: 1px solid var(--line); padding: 8px 10px; vertical-align: top; }
+      th { background: rgba(15, 23, 42, 0.03); text-align: left; }
+      .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+      .statusPill { font-weight: 700; }
+      .statusPill.ok { color: #166534; border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.08); }
+      .statusPill.err { color: #991b1b; border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.08); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Historial</h1>
+          <div class="muted" id="subtitle"></div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="btnClose" type="button">Cerrar</button>
+          <button class="primary" id="btnReload" type="button">Recargar</button>
+        </div>
+      </div>
+
+      <div id="msg"></div>
+      <div id="tableWrap"></div>
+    </div>
+
+    <script>
+      const INITIAL = JSON.parse("<?= initialJson ?>");
+      const $ = (id) => document.getElementById(id);
+
+      function setMsg(kind, text) {
+        const el = $("msg");
+        el.innerHTML = "";
+        if (!text) return;
+        const d = document.createElement("div");
+        d.className = "msg " + (kind === "ok" ? "ok" : "err");
+        d.textContent = text;
+        el.appendChild(d);
+      }
+
+      function runServer(fnName, args, onOk, onErr) {
+        const g = window.google;
+        try {
+          const runner = g.script.run
+            .withSuccessHandler((res) => onOk && onOk(res))
+            .withFailureHandler((e) => onErr && onErr(e));
+          const arr = Array.isArray(args) ? args : args === undefined ? [] : [args];
+          const fn = runner && runner[fnName];
+          if (typeof fn !== "function") return onErr && onErr(new Error(`Missing server function: ${fnName}`));
+          fn.apply(runner, arr);
+        } catch (e) {
+          onErr && onErr(e);
+        }
+      }
+
+      function esc(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function renderTable(history) {
+        const wrap = $("tableWrap");
+        wrap.innerHTML = "";
+        if (!history || history.length === 0) {
+          wrap.innerHTML = '<div class="msg">Todavia no hay ejecuciones.</div>';
+          return;
+        }
+
+        const table = document.createElement("table");
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Fecha</th>
+              <th>Filas</th>
+              <th>Duracion</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+        `;
+        const tbody = document.createElement("tbody");
+        history.forEach((r) => {
+          const tr = document.createElement("tr");
+          const ok = String(r.status || "") === "OK";
+          const dur = r.durationMs ? `${Math.round(Number(r.durationMs) / 1000)}s` : "";
+          tr.innerHTML = `
+            <td><span class="pill statusPill ${ok ? "ok" : "err"}">${esc(r.status || "")}</span></td>
+            <td class="mono">${esc(r.at || "")}</td>
+            <td class="mono">${esc(r.rows || 0)}</td>
+            <td class="mono">${esc(dur)}</td>
+            <td>${esc(r.error || "")}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+      }
+
+      function load() {
+        setMsg("ok", "Cargando...");
+        runServer(
+          "api_getRunHistory",
+          [{ datasourceId: INITIAL.datasourceId }],
+          (res) => {
+            setMsg("", "");
+            renderTable((res && res.history) || []);
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+          }
+        );
+      }
+
+      $("btnClose").addEventListener("click", () => google.script.host.close());
+      $("btnReload").addEventListener("click", load);
+
+      // Init
+      const t = INITIAL.title ? ` - ${INITIAL.title}` : "";
+      $("subtitle").textContent = `${INITIAL.connectionTitle}${t} | Hoja: ${INITIAL.sheetName} | Modelo: ${INITIAL.model}`;
+      load();
+    </script>
+  </body>
+</html>
+

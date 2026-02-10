@@ -34,6 +34,9 @@
       .panelTitle { font-weight: 700; margin: 0 0 6px; }
       .list { display: flex; flex-direction: column; gap: 10px; }
       .item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,0.02); }
+      .item.dragOver { outline: 2px solid rgba(37,99,235,0.35); }
+      .grab { cursor: grab; user-select: none; }
+      .grab:active { cursor: grabbing; }
       .title { font-weight: 700; }
       .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
       .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
@@ -125,6 +128,7 @@
         label: f.label || f.fieldName,
         type: f.type || "",
       }));
+      let draggingIdx = -1;
       let sampleTimer = null;
       let nav = [{ model: INITIAL.model, fieldName: "", label: INITIAL.modelName || INITIAL.model }];
       let cache = {}; // model -> { fields:[], meta:{} }
@@ -309,9 +313,11 @@
         selected.forEach((f, idx) => {
           const it = document.createElement("div");
           it.className = "item";
+          it.setAttribute("draggable", "true");
+          it.setAttribute("data-drag-idx", String(idx));
           it.innerHTML = `
             <div class="row">
-              <div class="tag primary">${escapeHtml(typeTag(f.type))}</div>
+              <div class="tag primary grab" title="Arrastra para reordenar">${escapeHtml(typeTag(f.type))}</div>
               <div class="col">
                 <div class="title">${escapeHtml(f.fieldName)} <span class="pill">${escapeHtml(f.type || "")}</span></div>
                 <label>Encabezado</label>
@@ -346,7 +352,7 @@
         }
         runServer(
           "api_getModelFields",
-          [{ connectionId: INITIAL.connectionId, model }],
+          [{ connectionId: INITIAL.connectionId, companyId: INITIAL.companyId, model }],
           (items) => {
             allFields = items || [];
             fieldMeta = {};
@@ -417,6 +423,7 @@
           [
             {
               connectionId: INITIAL.connectionId,
+              companyId: INITIAL.companyId,
               model: INITIAL.model,
               fields: selected.map((f) => f.fieldName),
               limit: 5,
@@ -520,6 +527,50 @@
         }
         renderSelected();
         renderAvailable();
+        scheduleSample();
+      });
+
+      document.body.addEventListener("dragstart", (ev) => {
+        const el = ev.target && ev.target.closest && ev.target.closest("div.item[data-drag-idx]");
+        if (!el) return;
+        const idx = Number(el.getAttribute("data-drag-idx"));
+        if (!Number.isFinite(idx)) return;
+        draggingIdx = idx;
+        try {
+          ev.dataTransfer.effectAllowed = "move";
+          ev.dataTransfer.setData("text/plain", String(idx));
+        } catch (_) {}
+      });
+      document.body.addEventListener("dragover", (ev) => {
+        const el = ev.target && ev.target.closest && ev.target.closest("div.item[data-drag-idx]");
+        if (!el) return;
+        ev.preventDefault();
+        el.classList.add("dragOver");
+      });
+      document.body.addEventListener("dragleave", (ev) => {
+        const el = ev.target && ev.target.closest && ev.target.closest("div.item[data-drag-idx]");
+        if (!el) return;
+        el.classList.remove("dragOver");
+      });
+      document.body.addEventListener("drop", (ev) => {
+        const el = ev.target && ev.target.closest && ev.target.closest("div.item[data-drag-idx]");
+        if (!el) return;
+        ev.preventDefault();
+        el.classList.remove("dragOver");
+        const toIdx = Number(el.getAttribute("data-drag-idx"));
+        let fromIdx = draggingIdx;
+        try {
+          const raw = ev.dataTransfer.getData("text/plain");
+          const n = Number(raw);
+          if (Number.isFinite(n)) fromIdx = n;
+        } catch (_) {}
+        if (!Number.isFinite(fromIdx) || !Number.isFinite(toIdx)) return;
+        if (fromIdx === toIdx) return;
+        if (!selected[fromIdx] || !selected[toIdx]) return;
+        const moved = selected.splice(fromIdx, 1)[0];
+        selected.splice(toIdx, 0, moved);
+        draggingIdx = -1;
+        renderSelected();
         scheduleSample();
       });
 
