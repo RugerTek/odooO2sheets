@@ -309,8 +309,27 @@
       </div>
 
       <div id="view_extracts">
+      <div id="extracts_screen_list">
       <div class="card">
-        <h2>Nueva Extraccion</h2>
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <h2 style="margin:0;">Mis extracciones</h2>
+          <button class="primary" id="btnNewExtraction" type="button">+ Nueva extraccion</button>
+        </div>
+        <div class="list" id="datasourcesList" style="margin-top:10px;"></div>
+        <div id="datasourceDetail" style="display:none; margin-top:10px;"></div>
+      </div>
+      </div>
+
+      <div id="extracts_screen_editor" style="display:none;">
+      <div class="card">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <div>
+            <h2 style="margin:0;" id="editorTitle">Nueva extraccion</h2>
+            <div class="hint" id="editorHint">Configura hoja, conexion, tabla y columnas.</div>
+          </div>
+          <button id="btnBackToList" type="button">Volver</button>
+        </div>
+
         <div class="grid2">
           <div>
             <label>Nombre (opcional)</label>
@@ -391,18 +410,13 @@
         </div>
         <div id="dsMsg"></div>
       </div>
-
-      <div class="card">
-        <h2>Mis Extracciones</h2>
-        <div class="list" id="datasourcesList"></div>
-        <div id="datasourceDetail" style="display:none;"></div>
       </div>
       </div>
     </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10h";
+      const UI_BUILD = "2026-02-10i";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -416,6 +430,7 @@
       let openMenuForDatasourceId = "";
       let openMenuForConnectionId = "";
       let sheetNames = [];
+      let extractsScreen = "list"; // list | editor
 
       function setStatus(kind, text, detail) {
         const bar = $("statusBar");
@@ -697,6 +712,88 @@
         if (b1) b1.classList.toggle("active", view === "extracts");
         if (b2) b2.classList.toggle("active", view === "connections");
         if (b3) b3.classList.toggle("active", view === "help");
+      }
+
+      function setExtractsScreen(screen) {
+        extractsScreen = screen === "editor" ? "editor" : "list";
+        const a = $("extracts_screen_list");
+        const b = $("extracts_screen_editor");
+        if (a) a.style.display = extractsScreen === "list" ? "block" : "none";
+        if (b) b.style.display = extractsScreen === "editor" ? "block" : "none";
+        try { document.querySelector(".wrap").scrollTop = 0; } catch (_) {}
+      }
+
+      function resetEditorFormUI() {
+        try { $("ds_title").value = ""; } catch (_) {}
+        try { $("ds_order").value = ""; } catch (_) {}
+        try { $("ds_limit").value = "80"; } catch (_) {}
+        try { $("ds_mode").value = "REPLACE"; } catch (_) {}
+        try { $("ds_header").checked = true; } catch (_) {}
+        try { $("ds_domain").value = ""; } catch (_) {}
+        try { $("ds_model").value = ""; } catch (_) {}
+        chosenModel = { model: "", name: "" };
+        selectedFields = [];
+        updateChosenModelUI();
+        updateChosenFieldsUI();
+        updateFilterSummaries();
+      }
+
+      function startNewExtractionFlow(opts) {
+        const connId = opts && opts.connectionId ? String(opts.connectionId) : "";
+        const onReady = opts && typeof opts.onReady === "function" ? opts.onReady : null;
+        if (!state.connections || !state.connections.length) {
+          setView("connections");
+          setStatus("err", "Primero crea una conexion.");
+          return;
+        }
+
+        if (connId) {
+          try { $("ds_conn").value = connId; } catch (_) {}
+          try { $("login_conn").value = connId; } catch (_) {}
+          tryLoadCompaniesForConnection(connId);
+          renderDsCompanyBox(connId);
+        } else if (state.connections.length === 1) {
+          try { $("ds_conn").value = state.connections[0].id; } catch (_) {}
+          try { $("login_conn").value = state.connections[0].id; } catch (_) {}
+          tryLoadCompaniesForConnection(state.connections[0].id);
+          renderDsCompanyBox(state.connections[0].id);
+        }
+
+        currentDatasourceId = "";
+        openMenuForDatasourceId = "";
+        openMenuForConnectionId = "";
+
+        try { $("editorTitle").textContent = "Nueva extraccion"; } catch (_) {}
+        try { $("editorHint").textContent = "Configura hoja, conexion, tabla y columnas."; } catch (_) {}
+
+        setEditingUI(null);
+        resetEditorFormUI();
+        setExtractsScreen("editor");
+
+        setStatus("info", "Preparando nueva extraccion...");
+        runServer(
+          "api_clearDraftExtraction",
+          [],
+          () => {
+            runServer(
+              "api_getDraftExtraction",
+              [],
+              (draft) => {
+                if (draft) applyDraft(draft);
+                setStatus("ok", "Listo.");
+                if (onReady) onReady();
+              },
+              () => {
+                setStatus("ok", "Listo.");
+                if (onReady) onReady();
+              }
+            );
+          },
+          () => {
+            setStatus("ok", "Listo.");
+            if (onReady) onReady();
+          }
+        );
       }
 
       function setDatasourceDetail(id) {
@@ -1438,6 +1535,8 @@
 
       $("btnCancelEdit").addEventListener("click", () => {
         setEditingUI(null);
+        resetEditorFormUI();
+        setExtractsScreen("list");
         setMsg($("dsMsg"), "ok", "Edicion cancelada.");
       });
 
@@ -1572,13 +1671,14 @@
               companyId: $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined,
             },
           ],
-           () => {
-             setMsg($("dsMsg"), "ok", isEdit ? "Cambios guardados." : "Extraccion guardada. Ahora podes apretar Refresh en la lista de abajo.");
-             setStatus("ok", isEdit ? "Cambios guardados." : "Extraccion guardada.");
-             $("btnCreateDs").disabled = false;
-             setEditingUI(null);
-             requestBootstrap(120);
-           },
+          () => {
+            setMsg($("dsMsg"), "ok", isEdit ? "Cambios guardados." : "Extraccion guardada. Ahora podes apretar Refresh en la lista de abajo.");
+            setStatus("ok", isEdit ? "Cambios guardados." : "Extraccion guardada.");
+            $("btnCreateDs").disabled = false;
+            setEditingUI(null);
+            setExtractsScreen("list");
+            requestBootstrap(120);
+          },
           (e) => {
             setMsg($("dsMsg"), "err", (e && (e.message || String(e))) || "Error");
             setStatus("err", isEdit ? "No se pudieron guardar los cambios." : "No se pudo guardar la extraccion.", e && (e.message || String(e)));
@@ -1855,25 +1955,30 @@
             return;
           }
 
-          // Go to extracts and open the model picker (fastest flow).
+          // Go to extracts editor and open the model picker (fastest flow).
           setView("extracts");
-          setStatus("info", "Nueva extraccion: elige una tabla...");
-          const prev = draftUpdatedAt;
-          const companyId = $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined;
-          runServer(
-            "ui_openModelPickerDialog",
-            [id, companyId],
-            () => {
-              pollDraftChange(prev, () => {
-                setStatus("ok", "Tabla seleccionada. Ahora elige columnas.");
-                try { $("btnOpenColumnsPicker").click(); } catch (_) {}
-              });
+          startNewExtractionFlow({
+            connectionId: id,
+            onReady: () => {
+              setStatus("info", "Nueva extraccion: elige una tabla...");
+              const prev = draftUpdatedAt;
+              const companyId = $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined;
+              runServer(
+                "ui_openModelPickerDialog",
+                [id, companyId],
+                () => {
+                  pollDraftChange(prev, () => {
+                    setStatus("ok", "Tabla seleccionada. Ahora elige columnas.");
+                    try { $("btnOpenColumnsPicker").click(); } catch (_) {}
+                  });
+                },
+                (e) => {
+                  const msg = (e && (e.message || String(e))) || "Error";
+                  setStatus("err", "No pude abrir el selector de tabla.", msg);
+                }
+              );
             },
-            (e) => {
-              const msg = (e && (e.message || String(e))) || "Error";
-              setStatus("err", "No pude abrir el selector de tabla.", msg);
-            }
-          );
+          });
           return;
         }
 
@@ -2017,6 +2122,10 @@
           const ds = (state.datasources || []).find((x) => x.id === id);
           if (!ds) return setStatus("err", "No encontre la extraccion para editar.", `Datasource: ${id}`);
           setStatus("info", "Cargando extraccion para editar...", `${ds.sheetName} | ${ds.odooModel}`);
+          setView("extracts");
+          setExtractsScreen("editor");
+          try { $("editorTitle").textContent = "Editar extraccion"; } catch (_) {}
+          try { $("editorHint").textContent = "Cambia lo que necesites y guarda."; } catch (_) {}
 
           // Populate form.
           try {
@@ -2160,8 +2269,19 @@
       $("tab_connections").addEventListener("click", () => setView("connections"));
       $("tab_help").addEventListener("click", () => setView("help"));
 
+      $("btnNewExtraction").addEventListener("click", () => {
+        setView("extracts");
+        startNewExtractionFlow({});
+      });
+      $("btnBackToList").addEventListener("click", () => {
+        setEditingUI(null);
+        setExtractsScreen("list");
+        setStatus("ok", "Listo.");
+      });
+
       // Default view
       setView("extracts");
+      setExtractsScreen("list");
 
       loadBootstrap();
     </script>
