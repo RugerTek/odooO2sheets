@@ -52,9 +52,19 @@
       .crumbs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       .crumbBtn { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
       .mini { font-size: 12px; color: var(--muted); }
+
+      .topLoader { position: fixed; top: 0; left: 0; right: 0; height: 3px; background: rgba(15, 23, 42, 0.06); opacity: 0; transition: opacity .15s ease; z-index: 20; }
+      .topLoaderBar { height: 100%; width: 40%; background: var(--accent); transform: translateX(-60%); animation: topbar 1.0s infinite; }
+      body.loading .topLoader { opacity: 1; }
+      @keyframes topbar {
+        0% { transform: translateX(-60%); }
+        50% { transform: translateX(120%); }
+        100% { transform: translateX(-60%); }
+      }
     </style>
   </head>
   <body>
+    <div class="topLoader" aria-hidden="true"><div class="topLoaderBar"></div></div>
     <div class="wrap">
       <div class="top">
         <div>
@@ -137,6 +147,12 @@
       let sampleTimer = null;
       let nav = [{ model: INITIAL.model, fieldName: "", label: INITIAL.modelName || INITIAL.model }];
       let cache = {}; // model -> { fields:[], meta:{} }
+      let loadingCount = 0;
+
+      function setLoading(on) {
+        loadingCount = Math.max(0, loadingCount + (on ? 1 : -1));
+        document.body.classList.toggle("loading", loadingCount > 0);
+      }
 
       function setMsg(kind, text) {
         const el = $("msg");
@@ -227,17 +243,54 @@
         });
       }
 
-      function runServer(fnName, args, onOk, onErr) {
+      function runServer(fnName, args, onOk, onErr, opts) {
         const g = window.google;
+        const timeoutMs = (opts && opts.timeoutMs) || 60000;
+        if (!(g && g.script && g.script.run)) {
+          const e = new Error("No se encontro google.script.run (abre este popup desde Google Sheets).");
+          if (onErr) onErr(e);
+          else setMsg("err", e.message);
+          return;
+        }
+
+        setLoading(true);
+        let done = false;
+        const t = setTimeout(() => {
+          if (done) return;
+          done = true;
+          setLoading(false);
+          const e = new Error("Timeout esperando respuesta del servidor.");
+          if (onErr) onErr(e);
+          else setMsg("err", e.message);
+        }, timeoutMs);
+
         try {
           const runner = g.script.run
-            .withSuccessHandler((res) => onOk && onOk(res))
-            .withFailureHandler((e) => onErr && onErr(e));
+            .withSuccessHandler((res) => {
+              done = true;
+              clearTimeout(t);
+              setLoading(false);
+              onOk && onOk(res);
+            })
+            .withFailureHandler((e) => {
+              done = true;
+              clearTimeout(t);
+              setLoading(false);
+              onErr && onErr(e);
+            });
           const arr = Array.isArray(args) ? args : args === undefined ? [] : [args];
           const fn = runner && runner[fnName];
-          if (typeof fn !== "function") return onErr && onErr(new Error(`Missing server function: ${fnName}`));
+          if (typeof fn !== "function") {
+            done = true;
+            clearTimeout(t);
+            setLoading(false);
+            return onErr && onErr(new Error(`Missing server function: ${fnName}`));
+          }
           fn.apply(runner, arr);
         } catch (e) {
+          done = true;
+          clearTimeout(t);
+          setLoading(false);
           onErr && onErr(e);
         }
       }

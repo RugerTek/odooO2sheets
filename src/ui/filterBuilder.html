@@ -50,9 +50,19 @@
       label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 2px; }
       .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
       details > summary { cursor: pointer; }
+
+      .topLoader { position: fixed; top: 0; left: 0; right: 0; height: 3px; background: rgba(15, 23, 42, 0.06); opacity: 0; transition: opacity .15s ease; z-index: 20; }
+      .topLoaderBar { height: 100%; width: 40%; background: var(--accent); transform: translateX(-60%); animation: topbar 1.0s infinite; }
+      body.loading .topLoader { opacity: 1; }
+      @keyframes topbar {
+        0% { transform: translateX(-60%); }
+        50% { transform: translateX(120%); }
+        100% { transform: translateX(-60%); }
+      }
     </style>
   </head>
   <body>
+    <div class="topLoader" aria-hidden="true"><div class="topLoaderBar"></div></div>
     <div class="wrap">
       <div class="top">
         <div>
@@ -118,10 +128,16 @@
 
       let allFields = [];
       let loaded = false;
+      let loadingCount = 0;
 
       // Visual builder tree: Group(op: AND|OR, children: [Group|Rule])
       let root = null;
       let activeGroupId = "";
+
+      function setLoading(on) {
+        loadingCount = Math.max(0, loadingCount + (on ? 1 : -1));
+        document.body.classList.toggle("loading", loadingCount > 0);
+      }
 
       function setMsg(kind, text) {
         const el = $("msg");
@@ -161,6 +177,58 @@
 
       function uid() {
         return Math.random().toString(16).slice(2) + Date.now().toString(16);
+      }
+
+      function runServer(fnName, args, onOk, onErr, opts) {
+        const g = window.google;
+        const timeoutMs = (opts && opts.timeoutMs) || 60000;
+        if (!(g && g.script && g.script.run)) {
+          const e = new Error("No se encontro google.script.run (abre este popup desde Google Sheets).");
+          if (onErr) onErr(e);
+          else setMsg("err", e.message);
+          return;
+        }
+
+        setLoading(true);
+        let done = false;
+        const t = setTimeout(() => {
+          if (done) return;
+          done = true;
+          setLoading(false);
+          const e = new Error("Timeout esperando respuesta del servidor.");
+          if (onErr) onErr(e);
+          else setMsg("err", e.message);
+        }, timeoutMs);
+
+        try {
+          const runner = g.script.run
+            .withSuccessHandler((res) => {
+              done = true;
+              clearTimeout(t);
+              setLoading(false);
+              onOk && onOk(res);
+            })
+            .withFailureHandler((e) => {
+              done = true;
+              clearTimeout(t);
+              setLoading(false);
+              onErr && onErr(e);
+            });
+          const arr = Array.isArray(args) ? args : args === undefined ? [] : [args];
+          const fn = runner && runner[fnName];
+          if (typeof fn !== "function") {
+            done = true;
+            clearTimeout(t);
+            setLoading(false);
+            return onErr && onErr(new Error(`Missing server function: ${fnName}`));
+          }
+          fn.apply(runner, arr);
+        } catch (e) {
+          done = true;
+          clearTimeout(t);
+          setLoading(false);
+          onErr && onErr(e);
+        }
       }
 
       function fieldByName(name) {
@@ -679,8 +747,14 @@
       function loadFields() {
         setMsg("ok", "");
         $("btnLoad").disabled = true;
-        google.script.run
-          .withSuccessHandler((res) => {
+        runServer(
+          "api_getModelFields",
+          [{
+            connectionId: INITIAL.connectionId,
+            model: INITIAL.model,
+            companyId: INITIAL.companyId,
+          }],
+          (res) => {
             allFields = (res || []).slice();
             loaded = true;
             renderFields();
@@ -701,17 +775,13 @@
 
             renderTree();
             $("btnLoad").disabled = false;
-          })
-          .withFailureHandler((e) => {
+          },
+          (e) => {
             const msg = (e && (e.message || String(e))) || "Error";
             setMsg("err", msg);
             $("btnLoad").disabled = false;
-          })
-          .api_getModelFields({
-            connectionId: INITIAL.connectionId,
-            model: INITIAL.model,
-            companyId: INITIAL.companyId,
-          });
+          }
+        );
       }
 
       $("btnCancel").addEventListener("click", () => google.script.host.close());
@@ -793,16 +863,18 @@
         $("btnSave").disabled = true;
         const useAdv = $("useAdvanced").checked;
         const domainStr = useAdv ? String($("domainAdvanced").value || "").trim() : JSON.stringify(computeDomainArray());
-        google.script.run
-          .withSuccessHandler(() => {
+        runServer(
+          "api_setDraftDomain",
+          [{ connectionId: INITIAL.connectionId, model: INITIAL.model, domain: domainStr }],
+          () => {
             google.script.host.close();
-          })
-          .withFailureHandler((e) => {
+          },
+          (e) => {
             const msg = (e && (e.message || String(e))) || "Error";
             setMsg("err", msg);
             $("btnSave").disabled = false;
-          })
-          .api_setDraftDomain({ connectionId: INITIAL.connectionId, model: INITIAL.model, domain: domainStr });
+          }
+        );
       });
 
       // Init
