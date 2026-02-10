@@ -388,7 +388,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10d";
+      const UI_BUILD = "2026-02-10e";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -718,12 +718,14 @@
           state.connections.forEach((c) => {
             const it = document.createElement("div");
             it.className = "item";
+            const credText = c.hasCredential ? "OK" : "Falta login";
             it.innerHTML = `
               <div class="title">${escapeHtml(c.title || c.name)}</div>
               <div class="meta">${escapeHtml(c.odooUrl)} | DB: ${escapeHtml(c.odooDb)}</div>
-              <div class="meta">Credenciales: ${c.hasCredential ? "OK" : "No"}${c.savedUsername ? " | " + escapeHtml(c.savedUsername) : ""}${c.companyId ? " | Company: #" + escapeHtml(c.companyId) : ""}</div>
+              <div class="meta">Login: ${escapeHtml(credText)}${c.savedUsername ? " | " + escapeHtml(c.savedUsername) : ""}${c.companyId ? " | Company: #" + escapeHtml(c.companyId) : ""}</div>
               <div class="row" style="margin-top:8px;">
-                <button data-action="conn_use" data-id="${c.id}">Usar</button>
+                <button class="primary" data-action="conn_new_ds" data-id="${c.id}" type="button">Nueva extraccion</button>
+                <button data-action="conn_use" data-id="${c.id}" type="button">Seleccionar</button>
                 <button data-action="conn_edit" data-id="${c.id}">Editar</button>
                 <button data-action="conn_logout" data-id="${c.id}">Logout</button>
                 <button class="danger" data-action="conn_delete" data-id="${c.id}">Borrar</button>
@@ -1723,10 +1725,56 @@
           try {
             const c = (state.connections || []).find((x) => x.id === id);
             if (c && c.savedUsername) $("login_user").value = c.savedUsername;
+            if (c && c.hasCredential) {
+              setView("extracts");
+              setStatus("ok", "Conexion seleccionada. Ahora crea/edita una extraccion.");
+            } else {
+              setView("connections");
+              setStatus("info", "Conexion seleccionada. Falta login (seccion Login).");
+            }
           } catch (_) {}
-          setView("connections");
-          setStatus("ok", "Conexion seleccionada. Ahora hace login si hace falta.");
           tryLoadCompaniesForConnection(id);
+          return;
+        }
+
+        if (action === "conn_new_ds") {
+          const id = btn.getAttribute("data-id");
+          if (!id) return;
+          const c = (state.connections || []).find((x) => x.id === id);
+          try { $("login_conn").value = id; } catch (_) {}
+          try { $("ds_conn").value = id; } catch (_) {}
+          try {
+            if (c && c.savedUsername) $("login_user").value = c.savedUsername;
+          } catch (_) {}
+
+          tryLoadCompaniesForConnection(id);
+
+          if (!c || !c.hasCredential) {
+            setView("connections");
+            setStatus("err", "Para crear una extraccion primero hace login en esta conexion.");
+            try { $("login_user").focus(); } catch (_) {}
+            return;
+          }
+
+          // Go to extracts and open the model picker (fastest flow).
+          setView("extracts");
+          setStatus("info", "Nueva extraccion: elige una tabla...");
+          const prev = draftUpdatedAt;
+          const companyId = $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined;
+          runServer(
+            "ui_openModelPickerDialog",
+            [id, companyId],
+            () => {
+              pollDraftChange(prev, () => {
+                setStatus("ok", "Tabla seleccionada. Ahora elige columnas.");
+                try { $("btnOpenColumnsPicker").click(); } catch (_) {}
+              });
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude abrir el selector de tabla.", msg);
+            }
+          );
           return;
         }
 

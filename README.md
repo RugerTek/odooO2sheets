@@ -28,3 +28,18 @@ Construir un add-on que permita:
 ## Seguimiento
 - Backlog: `BACKLOG.md`
 - Estado actual (OK / NO-OK): `STATUS.md`
+
+## Uso sin programacion (copiar a otra planilla)
+Hoy este proyecto es un script "pegado" a una planilla (bound script). Para usarlo en otro Google Sheet sin consola:
+
+1. Abri la planilla donde ya funciona el add-on.
+2. Click en `Archivo > Hacer una copia`.
+3. En la copia: `Extensiones > Odoo O2Sheets > Open sidebar`.
+
+Para pasarselo a otra persona:
+
+1. Compartile la planilla (o una copia "plantilla") con permisos de lectura.
+2. Esa persona hace `Archivo > Hacer una copia`.
+3. Abre el sidebar y autoriza permisos.
+
+Publicarlo como Add-on (Marketplace o deployment privado) es una fase posterior.
