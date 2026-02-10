@@ -126,25 +126,12 @@
       }
       .dsRow {
         display: grid;
-        grid-template-columns: 38px 1fr auto;
+        grid-template-columns: 1fr auto;
         gap: 10px;
         align-items: center;
         cursor: pointer;
       }
       .dsRow:hover { background: rgba(15,23,42,0.03); }
-      .dsRowIcon {
-        width: 38px;
-        height: 38px;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        background: linear-gradient(180deg, rgba(22,163,74,0.10), rgba(37,99,235,0.06));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: rgba(15, 23, 42, 0.7);
-        font-weight: 900;
-        font-size: 12px;
-      }
       .menuWrap { position: relative; display: inline-flex; gap: 6px; }
       .menuBtn { width: 34px; height: 34px; padding: 0; border-radius: 10px; }
 
@@ -423,7 +410,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10l";
+      const UI_BUILD = "2026-02-10m";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -1272,18 +1259,12 @@
               const fieldCount = (ds.fields || []).length;
               const fields = (ds.fields || []).map((f) => (f && (f.label || f.fieldName)) || "");
               const fieldsPreview = fields.filter(Boolean).slice(0, 3).join(", ");
-              const fieldsMore = fieldCount > 3 ? ` y ${fieldCount - 3} mas` : "";
-              const iconText = (() => {
-                const base = String(title || "DS").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-                return (base.slice(0, 2) || "DS").padEnd(2, " ").slice(0, 2);
-              })();
 
               it.innerHTML = `
                 <div class="dsRow" data-open-ds="${ds.id}">
-                  <div class="dsRowIcon">${escapeHtml(iconText)}</div>
                   <div>
                     <div class="title">${escapeHtml(title)} <span class="pill">${escapeHtml(ds.odooModel)}</span> ${statusPill}</div>
-                    <div class="meta">Columnas (${fieldCount}): ${escapeHtml(fieldsPreview || "")}${escapeHtml(fieldsMore)}</div>
+                    <div class="meta">Columnas (${fieldCount}): ${escapeHtml(fieldsPreview || "")}</div>
                     ${nextRun ? `<div class="meta">${escapeHtml(nextRun)}</div>` : ""}
                   </div>
                   <div class="menuWrap">
@@ -1440,6 +1421,7 @@
       function applyDraft(draft) {
         if (!draft) return;
         draftUpdatedAt = draft.updatedAt || draftUpdatedAt;
+        try { state.draft = draft; } catch (_) {}
 
         if (draft.connectionId) {
           try {
