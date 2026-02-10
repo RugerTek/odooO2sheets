@@ -22,6 +22,7 @@ import { baseFieldName, normalizeConnectionName, normalizeOdooUrl, nowIso, parse
 import { ensureSchedulerTrigger } from "./scheduler";
 import { refreshDatasourceById } from "./refresh";
 import { materializeValues } from "./materialize";
+import { updateStatusSheet } from "./statusSheet";
 
 export function api_getBootstrap(): {
   context: { spreadsheetId: string; userEmail: string };
@@ -578,6 +579,9 @@ export function api_createDatasource(input: {
     updatedAt: nowIso(),
   };
   upsertDatasource(ds);
+  try {
+    updateStatusSheet(ctx.spreadsheetId);
+  } catch (_) {}
   return ds;
 }
 
@@ -660,6 +664,9 @@ export function api_updateDatasource(input: {
 
   touchUpdatedAt(existing);
   upsertDatasource(existing);
+  try {
+    updateStatusSheet(existing.documentId);
+  } catch (_) {}
   return existing;
 }
 
@@ -688,6 +695,9 @@ export function api_setDatasourceSchedule(input: {
 
   touchUpdatedAt(ds);
   upsertDatasource(ds);
+  try {
+    updateStatusSheet(ds.documentId);
+  } catch (_) {}
   return ds;
 }
 

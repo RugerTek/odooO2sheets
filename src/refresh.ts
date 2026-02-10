@@ -9,6 +9,7 @@ import {
 import { writeTable } from "./sheets";
 import { baseFieldName, parseDomain, uniqStrings } from "./util";
 import { materializeValues } from "./materialize";
+import { updateStatusSheet } from "./statusSheet";
 
 export function refreshDatasourceById(
   datasourceId: string,
@@ -70,6 +71,10 @@ export function refreshDatasourceById(
     ds.runHistory = [lastRun, ...((ds.runHistory || []) as any[])].slice(0, 10);
     touchUpdatedAt(ds);
     upsertDatasource(ds);
+    // Keep a visible audit trail inside the spreadsheet.
+    try {
+      updateStatusSheet(ds.documentId);
+    } catch (_) {}
     return { rowsFetched };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -84,6 +89,9 @@ export function refreshDatasourceById(
     ds.runHistory = [lastRun, ...((ds.runHistory || []) as any[])].slice(0, 10);
     touchUpdatedAt(ds);
     upsertDatasource(ds);
+    try {
+      updateStatusSheet(ds.documentId);
+    } catch (_) {}
     throw e;
   } finally {
     void opts;
