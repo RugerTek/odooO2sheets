@@ -28,7 +28,7 @@ import {
   refreshDatasourceById,
 } from "./service";
 import { runSchedulerTick_ } from "./scheduler";
-import { ui_openColumnsPickerDialog, ui_openHistoryDialog, ui_openModelPickerDialog, ui_openScheduleDialog } from "./uiDialogs";
+import { ui_openColumnsPickerDialog, ui_openHistoryDialog, ui_openModelPickerDialog, ui_openRenameDatasourceDialog, ui_openScheduleDialog } from "./uiDialogs";
 
 function onOpen(): void {
   SpreadsheetApp.getUi()
@@ -84,5 +84,6 @@ function showSidebar(): void {
 (globalThis as any).ui_openColumnsPickerDialog = ui_openColumnsPickerDialog;
 (globalThis as any).ui_openScheduleDialog = ui_openScheduleDialog;
 (globalThis as any).ui_openHistoryDialog = ui_openHistoryDialog;
+(globalThis as any).ui_openRenameDatasourceDialog = ui_openRenameDatasourceDialog;
 
 (globalThis as any).runSchedulerTick_ = runSchedulerTick_;

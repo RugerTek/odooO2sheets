@@ -71,3 +71,15 @@ export function ui_openHistoryDialog(datasourceId: string): void {
   });
   SpreadsheetApp.getUi().showModalDialog(html, "Historial");
 }
+
+export function ui_openRenameDatasourceDialog(datasourceId: string): void {
+  const ds = getDatasource(datasourceId);
+  if (!ds) throw new Error("Datasource not found.");
+  const html = makeTemplate("ui/renameDatasource", "Renombrar", {
+    datasourceId: ds.id,
+    title: ds.title || "",
+    sheetName: ds.sheetName,
+    model: ds.odooModel,
+  });
+  SpreadsheetApp.getUi().showModalDialog(html, "Renombrar");
+}

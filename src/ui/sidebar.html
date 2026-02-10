@@ -75,6 +75,43 @@
       .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
       .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
       .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border: 1px solid var(--line); padding: 1px 6px; border-radius: 7px; background: rgba(15,23,42,0.02); }
+      .iconBtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 10px;
+      }
+      .iconBtn svg { width: 18px; height: 18px; }
+      .dsCard {
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        gap: 10px;
+        align-items: start;
+      }
+      .dsIcon {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(22,163,74,0.10), rgba(37,99,235,0.06));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(15, 23, 42, 0.7);
+        font-weight: 800;
+      }
+      .dsActions {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .statusPill { font-weight: 700; }
+      .statusPill.ok { color: #166534; border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.08); }
+      .statusPill.err { color: #991b1b; border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.08); }
 
       .status {
         display: none;
@@ -272,7 +309,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09n";
+      const UI_BUILD = "2026-02-09o";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -606,27 +643,50 @@
             const nextRun = ds.nextRunAt ? `Proxima: ${ds.nextRunAt}` : "";
             const title = ds.title ? ds.title : ds.sheetName;
             const company = ds.companyId ? `Company: #${ds.companyId}` : "";
+            const fields = (ds.fields || []).map((f) => f.fieldName);
+            const fieldsPreview = fields.slice(0, 4).join(", ") + (fields.length > 4 ? ` (+${fields.length - 4})` : "");
+            const ok = ds.lastRun && ds.lastRun.status === "OK";
+            const statusPill = ds.lastRun ? `<span class="pill statusPill ${ok ? "ok" : "err"}">${escapeHtml(ds.lastRun.status)}</span>` : `<span class="pill">NEW</span>`;
             it.innerHTML = `
-              <div class="title">${escapeHtml(title)} <span class="pill">${escapeHtml(ds.odooModel)}</span></div>
-              <div class="meta">Hoja: ${escapeHtml(ds.sheetName)} ${company ? "| " + escapeHtml(company) : ""}</div>
-              <div class="meta">Campos: ${escapeHtml(ds.fields.map((f) => f.fieldName).join(", "))}</div>
-              <div class="meta">${escapeHtml(auto)} | ${escapeHtml(autoMeta)}</div>
-              ${nextRun ? `<div class="meta">${escapeHtml(nextRun)}</div>` : ""}
-              <div class="meta">Ultima ejecucion: ${escapeHtml(last)}</div>
-               <div class="row" style="margin-top:8px;">
-                 <button class="primary" data-action="refresh" data-id="${ds.id}">Refresh</button>
-                 <button data-action="edit" data-id="${ds.id}">Editar</button>
-                 <button data-action="schedule" data-id="${ds.id}">Timer</button>
-                 <button data-action="history" data-id="${ds.id}">Historial</button>
-                 <button data-action="duplicate" data-id="${ds.id}">Duplicar</button>
-                 <button data-action="rename" data-id="${ds.id}">Renombrar</button>
-                 <button class="danger" data-action="delete" data-id="${ds.id}">Borrar</button>
-               </div>
-               <div id="ds_item_msg_${ds.id}"></div>
+              <div class="dsCard">
+                <div class="dsIcon">O2</div>
+                <div>
+                  <div class="title">${escapeHtml(title)} <span class="pill">${escapeHtml(ds.odooModel)}</span> ${statusPill}</div>
+                  <div class="meta">Hoja: ${escapeHtml(ds.sheetName)} ${company ? "| " + escapeHtml(company) : ""}</div>
+                  <div class="meta">Columnas: ${escapeHtml(fieldsPreview || "")}</div>
+                  <div class="meta">${escapeHtml(auto)} | ${escapeHtml(autoMeta)}</div>
+                  ${nextRun ? `<div class="meta">${escapeHtml(nextRun)}</div>` : ""}
+                  <div class="meta">Ultima: ${escapeHtml(last)}</div>
+                  <div id="ds_item_msg_${ds.id}"></div>
+                </div>
+                <div class="dsActions">
+                  <button class="iconBtn primary" title="Refresh" aria-label="Refresh" data-action="refresh" data-id="${ds.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v7h-7"/></svg>
+                  </button>
+                  <button class="iconBtn" title="Editar" aria-label="Editar" data-action="edit" data-id="${ds.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                  </button>
+                  <button class="iconBtn" title="Timer" aria-label="Timer" data-action="schedule" data-id="${ds.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v5l3 2"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                  </button>
+                  <button class="iconBtn" title="Historial" aria-label="Historial" data-action="history" data-id="${ds.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+                  </button>
+                  <button class="iconBtn" title="Duplicar" aria-label="Duplicar" data-action="duplicate" data-id="${ds.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 8h12v12H8z"/><path d="M4 16V4h12"/></svg>
+                  </button>
+                  <button class="iconBtn" title="Renombrar" aria-label="Renombrar" data-action="rename" data-id="${ds.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M15 4l5 5"/><path d="M4 20l4-1 11-11-3-3L5 16l-1 4Z"/></svg>
+                  </button>
+                  <button class="iconBtn danger" title="Borrar" aria-label="Borrar" data-action="delete" data-id="${ds.id}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 16h10l1-16"/></svg>
+                  </button>
+                </div>
+              </div>
              `;
              dl.appendChild(it);
            });
-         }
+          }
 
         updateChosenModelUI();
         updateChosenFieldsUI();
@@ -1149,24 +1209,19 @@
 
         if (action === "rename") {
           const id = btn.getAttribute("data-id");
-          const ds = (state.datasources || []).find((x) => x.id === id);
-          const prev = ds && ds.title ? ds.title : "";
-          const title = prompt("Nuevo nombre (opcional). Deja vacio para usar el nombre de la hoja:", prev);
-          if (title === null) return;
-          btn.disabled = true;
-          setStatus("info", "Renombrando...", `Datasource: ${id}`);
+          setStatus("info", "Abriendo renombrar...", `Datasource: ${id}`);
           runServer(
-            "api_renameDatasource",
-            [{ datasourceId: id, title }],
+            "ui_openRenameDatasourceDialog",
+            [id],
             () => {
-              setStatus("ok", "Nombre guardado.");
-              btn.disabled = false;
-              loadBootstrap();
+              // Best effort refresh after user closes dialog.
+              setTimeout(loadBootstrap, 1200);
+              setTimeout(loadBootstrap, 3000);
+              setStatus("ok", "Renombrar abierto.");
             },
             (e) => {
               const msg = (e && (e.message || String(e))) || "Error";
-              setStatus("err", "No pude renombrar.", msg);
-              btn.disabled = false;
+              setStatus("err", "No pude abrir renombrar.", msg);
             }
           );
           return;
