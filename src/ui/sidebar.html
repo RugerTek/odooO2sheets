@@ -109,6 +109,61 @@
         flex-wrap: wrap;
         justify-content: flex-end;
       }
+      .dsRow {
+        display: grid;
+        grid-template-columns: 38px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        cursor: pointer;
+      }
+      .dsRow:hover { background: rgba(15,23,42,0.03); }
+      .dsRowIcon {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(22,163,74,0.10), rgba(37,99,235,0.06));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(15, 23, 42, 0.7);
+        font-weight: 900;
+        font-size: 12px;
+      }
+      .menuWrap { position: relative; display: inline-flex; gap: 6px; }
+      .menuBtn { width: 34px; height: 34px; padding: 0; border-radius: 10px; }
+      .menu {
+        position: absolute;
+        top: 38px;
+        right: 0;
+        z-index: 50;
+        min-width: 190px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
+        padding: 6px;
+      }
+      .menuItem {
+        width: 100%;
+        text-align: left;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+      }
+      .menuItem:hover { background: rgba(15,23,42,0.04); border-color: rgba(15,23,42,0.10); }
+      .menuItem.danger { color: #991b1b; }
+      .detailTop {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .detailTitle { font-weight: 800; font-size: 14px; }
+      .detailActions { display: flex; gap: 8px; align-items: center; }
       .statusPill { font-weight: 700; }
       .statusPill.ok { color: #166534; border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.08); }
       .statusPill.err { color: #991b1b; border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.08); }
@@ -303,13 +358,14 @@
       <div class="card">
         <h2>Mis Extracciones</h2>
         <div class="list" id="datasourcesList"></div>
+        <div id="datasourceDetail" style="display:none;"></div>
       </div>
       </div>
     </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09o";
+      const UI_BUILD = "2026-02-09p";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -319,6 +375,8 @@
       let dsCompanies = []; // companies for extraction editor dropdown
       let editingConnId = "";
       let currentView = "extracts"; // extracts | connections | help
+      let currentDatasourceId = "";
+      let openMenuForDatasourceId = "";
 
       function setStatus(kind, text, detail) {
         const bar = $("statusBar");
@@ -564,6 +622,12 @@
         if (b3) b3.classList.toggle("active", view === "help");
       }
 
+      function setDatasourceDetail(id) {
+        currentDatasourceId = id || "";
+        openMenuForDatasourceId = "";
+        render();
+      }
+
       function render() {
         // Connections list
         const cl = $("connectionsList");
@@ -623,70 +687,137 @@
           }
         } catch (_) {}
 
-        // Datasources list
+        // Datasources list + detail
         const dl = $("datasourcesList");
-        dl.innerHTML = "";
-        if (!state.datasources.length) {
-          const d = document.createElement("div");
-          d.className = "hint";
-          d.textContent = "No hay extracciones todavia.";
-          dl.appendChild(d);
-        } else {
-          state.datasources.forEach((ds) => {
-            const it = document.createElement("div");
-            it.className = "item";
-            const last = ds.lastRun ? `${ds.lastRun.status} @ ${ds.lastRun.at} (${ds.lastRun.rows} filas)` : "nunca";
-            const auto = ds.schedulerEnabled ? "AUTO: ON" : "AUTO: OFF";
-            const autoMeta = ds.schedulerEnabled
-              ? `Timezone: ${(ds.schedulerConfig && ds.schedulerConfig.timezone) || "?"} | Horas: ${((ds.schedulerConfig && ds.schedulerConfig.hours) || []).join(",") || "todas"}`
-              : "Auto refresh desactivado.";
-            const nextRun = ds.nextRunAt ? `Proxima: ${ds.nextRunAt}` : "";
-            const title = ds.title ? ds.title : ds.sheetName;
-            const company = ds.companyId ? `Company: #${ds.companyId}` : "";
-            const fields = (ds.fields || []).map((f) => f.fieldName);
-            const fieldsPreview = fields.slice(0, 4).join(", ") + (fields.length > 4 ? ` (+${fields.length - 4})` : "");
-            const ok = ds.lastRun && ds.lastRun.status === "OK";
-            const statusPill = ds.lastRun ? `<span class="pill statusPill ${ok ? "ok" : "err"}">${escapeHtml(ds.lastRun.status)}</span>` : `<span class="pill">NEW</span>`;
-            it.innerHTML = `
-              <div class="dsCard">
-                <div class="dsIcon">O2</div>
+        const detail = $("datasourceDetail");
+        if (dl) dl.innerHTML = "";
+        if (detail) detail.innerHTML = "";
+
+        const dsCurrent = currentDatasourceId
+          ? (state.datasources || []).find((x) => x.id === currentDatasourceId)
+          : null;
+
+        if (dsCurrent && detail) {
+          if (dl) dl.style.display = "none";
+          detail.style.display = "block";
+
+          const title = dsCurrent.title ? dsCurrent.title : dsCurrent.sheetName;
+          const company = dsCurrent.companyId ? `Company: #${dsCurrent.companyId}` : "";
+          const conn = (state.connections || []).find((c) => c.id === dsCurrent.connectionId);
+          const connTitle = conn ? conn.title || conn.name : dsCurrent.connectionId;
+          const last = dsCurrent.lastRun
+            ? `${dsCurrent.lastRun.status} @ ${dsCurrent.lastRun.at} (${dsCurrent.lastRun.rows} filas)`
+            : "nunca";
+          const ok = dsCurrent.lastRun && dsCurrent.lastRun.status === "OK";
+          const statusPill = dsCurrent.lastRun
+            ? `<span class="pill statusPill ${ok ? "ok" : "err"}">${escapeHtml(dsCurrent.lastRun.status)}</span>`
+            : `<span class="pill">NEW</span>`;
+
+          const auto = dsCurrent.schedulerEnabled ? "AUTO: ON" : "AUTO: OFF";
+          const autoMeta = dsCurrent.schedulerEnabled
+            ? `Timezone: ${(dsCurrent.schedulerConfig && dsCurrent.schedulerConfig.timezone) || "?"} | Horas: ${((dsCurrent.schedulerConfig && dsCurrent.schedulerConfig.hours) || []).join(",") || "todas"}`
+            : "Auto refresh desactivado.";
+          const nextRun = dsCurrent.nextRunAt ? `Proxima: ${dsCurrent.nextRunAt}` : "";
+          const fields = (dsCurrent.fields || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+
+          detail.innerHTML = `
+            <div class="card">
+              <div class="detailTop">
                 <div>
-                  <div class="title">${escapeHtml(title)} <span class="pill">${escapeHtml(ds.odooModel)}</span> ${statusPill}</div>
-                  <div class="meta">Hoja: ${escapeHtml(ds.sheetName)} ${company ? "| " + escapeHtml(company) : ""}</div>
-                  <div class="meta">Columnas: ${escapeHtml(fieldsPreview || "")}</div>
+                  <div class="detailTitle">${escapeHtml(title)} <span class="pill">${escapeHtml(dsCurrent.odooModel)}</span> ${statusPill}</div>
+                  <div class="meta">Conexion: ${escapeHtml(connTitle)} | Hoja: ${escapeHtml(dsCurrent.sheetName)} ${company ? "| " + escapeHtml(company) : ""}</div>
                   <div class="meta">${escapeHtml(auto)} | ${escapeHtml(autoMeta)}</div>
                   ${nextRun ? `<div class="meta">${escapeHtml(nextRun)}</div>` : ""}
                   <div class="meta">Ultima: ${escapeHtml(last)}</div>
-                  <div id="ds_item_msg_${ds.id}"></div>
                 </div>
-                <div class="dsActions">
-                  <button class="iconBtn primary" title="Refresh" aria-label="Refresh" data-action="refresh" data-id="${ds.id}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v7h-7"/></svg>
-                  </button>
-                  <button class="iconBtn" title="Editar" aria-label="Editar" data-action="edit" data-id="${ds.id}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                  </button>
-                  <button class="iconBtn" title="Timer" aria-label="Timer" data-action="schedule" data-id="${ds.id}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v5l3 2"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
-                  </button>
-                  <button class="iconBtn" title="Historial" aria-label="Historial" data-action="history" data-id="${ds.id}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
-                  </button>
-                  <button class="iconBtn" title="Duplicar" aria-label="Duplicar" data-action="duplicate" data-id="${ds.id}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 8h12v12H8z"/><path d="M4 16V4h12"/></svg>
-                  </button>
-                  <button class="iconBtn" title="Renombrar" aria-label="Renombrar" data-action="rename" data-id="${ds.id}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M15 4l5 5"/><path d="M4 20l4-1 11-11-3-3L5 16l-1 4Z"/></svg>
-                  </button>
-                  <button class="iconBtn danger" title="Borrar" aria-label="Borrar" data-action="delete" data-id="${ds.id}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 16h10l1-16"/></svg>
-                  </button>
+                <div class="detailActions">
+                  <button data-action="back_ds" type="button">Volver</button>
+                  <button class="primary" data-action="refresh" data-id="${dsCurrent.id}" type="button">Refresh</button>
+                  <div class="menuWrap">
+                    <button class="menuBtn" data-action="menu_ds" data-id="${dsCurrent.id}" type="button" aria-label="Menu">...</button>
+                    ${
+                      openMenuForDatasourceId === dsCurrent.id
+                        ? `<div class="menu">
+                            <button class="menuItem" data-action="edit" data-id="${dsCurrent.id}" type="button">Editar</button>
+                            <button class="menuItem" data-action="schedule" data-id="${dsCurrent.id}" type="button">Timer</button>
+                            <button class="menuItem" data-action="history" data-id="${dsCurrent.id}" type="button">Historial</button>
+                            <button class="menuItem" data-action="duplicate" data-id="${dsCurrent.id}" type="button">Duplicar</button>
+                            <button class="menuItem" data-action="rename" data-id="${dsCurrent.id}" type="button">Renombrar</button>
+                            <button class="menuItem danger" data-action="delete" data-id="${dsCurrent.id}" type="button">Borrar</button>
+                          </div>`
+                        : ""
+                    }
+                  </div>
                 </div>
               </div>
-             `;
-             dl.appendChild(it);
-           });
+              <div class="sep"></div>
+              <div class="meta"><b>Columnas</b></div>
+              <div class="pills" style="margin-top:8px;">
+                ${fields.map((f) => `<span class="pill">${escapeHtml(f.fieldName)}</span>`).join("")}
+              </div>
+              <div id="ds_item_msg_${dsCurrent.id}"></div>
+            </div>
+          `;
+        } else {
+          currentDatasourceId = "";
+          openMenuForDatasourceId = "";
+          if (dl) dl.style.display = "block";
+          if (detail) detail.style.display = "none";
+
+          if (!state.datasources.length) {
+            const d = document.createElement("div");
+            d.className = "hint";
+            d.textContent = "No hay extracciones todavia.";
+            if (dl) dl.appendChild(d);
+          } else {
+            state.datasources.forEach((ds) => {
+              const it = document.createElement("div");
+              it.className = "item";
+              it.setAttribute("data-open-ds", ds.id);
+
+              const title = ds.title ? ds.title : ds.sheetName;
+              const ok = ds.lastRun && ds.lastRun.status === "OK";
+              const statusPill = ds.lastRun
+                ? `<span class="pill statusPill ${ok ? "ok" : "err"}">${escapeHtml(ds.lastRun.status)}</span>`
+                : `<span class="pill">NEW</span>`;
+              const nextRun = ds.nextRunAt ? `Prox: ${ds.nextRunAt}` : "";
+              const fields = (ds.fields || []).map((f) => f.fieldName);
+              const fieldsPreview = fields.slice(0, 3).join(", ") + (fields.length > 3 ? ` (+${fields.length - 3})` : "");
+
+              it.innerHTML = `
+                <div class="dsRow" data-open-ds="${ds.id}">
+                  <div class="dsRowIcon">O2</div>
+                  <div>
+                    <div class="title">${escapeHtml(title)} <span class="pill">${escapeHtml(ds.odooModel)}</span> ${statusPill}</div>
+                    <div class="meta">Columnas: ${escapeHtml(fieldsPreview || "")}</div>
+                    ${nextRun ? `<div class="meta">${escapeHtml(nextRun)}</div>` : ""}
+                  </div>
+                  <div class="menuWrap">
+                    <button class="iconBtn primary" title="Refresh" aria-label="Refresh" data-action="refresh" data-id="${ds.id}" type="button">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v7h-7"/></svg>
+                    </button>
+                    <button class="menuBtn" data-action="menu_ds" data-id="${ds.id}" type="button" aria-label="Menu">...</button>
+                    ${
+                      openMenuForDatasourceId === ds.id
+                        ? `<div class="menu">
+                            <button class="menuItem" data-action="open_ds" data-id="${ds.id}" type="button">Abrir detalle</button>
+                            <button class="menuItem" data-action="edit" data-id="${ds.id}" type="button">Editar</button>
+                            <button class="menuItem" data-action="schedule" data-id="${ds.id}" type="button">Timer</button>
+                            <button class="menuItem" data-action="history" data-id="${ds.id}" type="button">Historial</button>
+                            <button class="menuItem" data-action="duplicate" data-id="${ds.id}" type="button">Duplicar</button>
+                            <button class="menuItem" data-action="rename" data-id="${ds.id}" type="button">Renombrar</button>
+                            <button class="menuItem danger" data-action="delete" data-id="${ds.id}" type="button">Borrar</button>
+                          </div>`
+                        : ""
+                    }
+                  </div>
+                </div>
+                <div id="ds_item_msg_${ds.id}"></div>
+              `;
+              if (dl) dl.appendChild(it);
+            });
           }
+        }
 
         updateChosenModelUI();
         updateChosenFieldsUI();
@@ -1075,7 +1206,38 @@
       document.body.addEventListener("click", (ev) => {
         const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
         const action = btn ? btn.getAttribute("data-action") : null;
-        if (!action) return;
+
+        // Click outside: close menus; or open detail when clicking a row.
+        if (!action) {
+          const openEl = ev.target && ev.target.closest && ev.target.closest("[data-open-ds]");
+          if (openEl) {
+            const id = openEl.getAttribute("data-open-ds");
+            if (id) return setDatasourceDetail(id);
+          }
+          if (openMenuForDatasourceId) {
+            openMenuForDatasourceId = "";
+            render();
+          }
+          return;
+        }
+
+        if (action === "menu_ds") {
+          const id = btn.getAttribute("data-id") || "";
+          openMenuForDatasourceId = openMenuForDatasourceId === id ? "" : id;
+          render();
+          return;
+        }
+
+        if (action === "open_ds") {
+          const id = btn.getAttribute("data-id") || "";
+          if (id) setDatasourceDetail(id);
+          return;
+        }
+
+        if (action === "back_ds") {
+          setDatasourceDetail("");
+          return;
+        }
 
         if (action === "conn_use") {
           const id = btn.getAttribute("data-id");
