@@ -423,7 +423,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10k";
+      const UI_BUILD = "2026-02-10l";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -802,6 +802,49 @@
         );
       }
 
+      function syncDraftToDatasource(ds, onDone) {
+        if (!ds) return onDone && onDone();
+        const connId = ds.connectionId;
+        const model = ds.odooModel;
+        const modelName = model;
+        const fields = (ds.fields || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((f, idx) => ({
+          fieldName: f.fieldName,
+          label: f.label || f.fieldName,
+          order: idx,
+          type: f.type || "",
+        }));
+        const domain = ds.domain || "";
+
+        runServer(
+          "api_setDraftModel",
+          [{ connectionId: connId, model, modelName }],
+          (d1) => {
+            applyDraft(d1);
+            runServer(
+              "api_setDraftFields",
+              [{ connectionId: connId, model, fields }],
+              (d2) => {
+                applyDraft(d2);
+                runServer(
+                  "api_setDraftDomain",
+                  [{ connectionId: connId, model, domain }],
+                  (d3) => {
+                    applyDraft(d3);
+                    if (onDone) onDone();
+                  },
+                  () => {
+                    applyDraft(d2);
+                    if (onDone) onDone();
+                  }
+                );
+              },
+              () => onDone && onDone()
+            );
+          },
+          () => onDone && onDone()
+        );
+      }
+
       function setDatasourceDetail(id) {
         currentDatasourceId = id || "";
         closeFloatMenu();
@@ -1023,8 +1066,13 @@
             ? `Timezone: ${(dsCurrent.schedulerConfig && dsCurrent.schedulerConfig.timezone) || "?"} | Horas: ${((dsCurrent.schedulerConfig && dsCurrent.schedulerConfig.hours) || []).join(",") || "todas"}`
             : "Auto refresh desactivado.";
           const nextRun = dsCurrent.nextRunAt ? `Proxima: ${dsCurrent.nextRunAt}` : "";
+          const draftMatchesCurrent =
+            state &&
+            state.draft &&
+            state.draft.connectionId === dsCurrent.connectionId &&
+            state.draft.model === dsCurrent.odooModel;
           const fieldsFromDraft =
-            editingDatasourceId === dsCurrent.id && selectedFields && selectedFields.length ? selectedFields : null;
+            draftMatchesCurrent && selectedFields && selectedFields.length ? selectedFields : null;
           const fields = (fieldsFromDraft || dsCurrent.fields || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
           const curModel = ($("ds_model").value || "").trim() || dsCurrent.odooModel;
           const curModelName = chosenModel && chosenModel.name ? chosenModel.name : curModel;
@@ -1221,15 +1269,21 @@
                 ? `<span class="pill statusPill ${ok ? "ok" : "err"}">${escapeHtml(ds.lastRun.status)}</span>`
                 : `<span class="pill">NEW</span>`;
               const nextRun = ds.nextRunAt ? `Prox: ${ds.nextRunAt}` : "";
+              const fieldCount = (ds.fields || []).length;
               const fields = (ds.fields || []).map((f) => (f && (f.label || f.fieldName)) || "");
-              const fieldsPreview = fields.filter(Boolean).slice(0, 3).join(", ") + (fields.length > 3 ? ` (+${fields.length - 3})` : "");
+              const fieldsPreview = fields.filter(Boolean).slice(0, 3).join(", ");
+              const fieldsMore = fieldCount > 3 ? ` y ${fieldCount - 3} mas` : "";
+              const iconText = (() => {
+                const base = String(title || "DS").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+                return (base.slice(0, 2) || "DS").padEnd(2, " ").slice(0, 2);
+              })();
 
               it.innerHTML = `
                 <div class="dsRow" data-open-ds="${ds.id}">
-                  <div class="dsRowIcon">O2</div>
+                  <div class="dsRowIcon">${escapeHtml(iconText)}</div>
                   <div>
                     <div class="title">${escapeHtml(title)} <span class="pill">${escapeHtml(ds.odooModel)}</span> ${statusPill}</div>
-                    <div class="meta">Columnas: ${escapeHtml(fieldsPreview || "")}</div>
+                    <div class="meta">Columnas (${fieldCount}): ${escapeHtml(fieldsPreview || "")}${escapeHtml(fieldsMore)}</div>
                     ${nextRun ? `<div class="meta">${escapeHtml(nextRun)}</div>` : ""}
                   </div>
                   <div class="menuWrap">
@@ -1850,20 +1904,22 @@
           const companyId = ($("d_company") && $("d_company").value) ? Number($("d_company").value) : undefined;
           const prev = draftUpdatedAt;
           setStatus("info", "Abriendo selector de columnas...");
-          runServer(
-            "ui_openColumnsPickerDialog",
-            [connId, model, companyId],
-            () => {
-              pollDraftChange(prev, () => {
-                setStatus("ok", "Columnas actualizadas.");
-                render();
-              });
-            },
-            (e) => {
-              const msg = (e && (e.message || String(e))) || "Error";
-              setStatus("err", "No pude abrir selector de columnas.", msg);
-            }
-          );
+          syncDraftToDatasource(ds, () => {
+            runServer(
+              "ui_openColumnsPickerDialog",
+              [connId, model, companyId],
+              () => {
+                pollDraftChange(prev, () => {
+                  setStatus("ok", "Columnas actualizadas (pendiente guardar cambios).");
+                  render();
+                });
+              },
+              (e) => {
+                const msg = (e && (e.message || String(e))) || "Error";
+                setStatus("err", "No pude abrir selector de columnas.", msg);
+              }
+            );
+          });
           return;
         }
 
@@ -1877,20 +1933,22 @@
           const prev = draftUpdatedAt;
           const curDomain = ($("d_domain") && $("d_domain").value) ? $("d_domain").value : (ds.domain || "");
           setStatus("info", "Abriendo editor de filtros...");
-          runServer(
-            "ui_openFilterBuilderDialog",
-            [connId, model, curDomain, companyId],
-            () => {
-              pollDraftChange(prev, () => {
-                setStatus("ok", "Filtros actualizados.");
-                render();
-              });
-            },
-            (e) => {
-              const msg = (e && (e.message || String(e))) || "Error";
-              setStatus("err", "No pude abrir el editor de filtros.", msg);
-            }
-          );
+          syncDraftToDatasource(ds, () => {
+            runServer(
+              "ui_openFilterBuilderDialog",
+              [connId, model, curDomain, companyId],
+              () => {
+                pollDraftChange(prev, () => {
+                  setStatus("ok", "Filtros actualizados (pendiente guardar cambios).");
+                  render();
+                });
+              },
+              (e) => {
+                const msg = (e && (e.message || String(e))) || "Error";
+                setStatus("err", "No pude abrir el editor de filtros.", msg);
+              }
+            );
+          });
           return;
         }
 
@@ -1906,7 +1964,6 @@
         if (action === "menu_ds") {
           const id = btn.getAttribute("data-id") || "";
           openFloatMenu(btn, `ds:${id}`, [
-            { label: "Abrir detalle", action: "open_ds", id },
             { label: "Editar", action: "edit", id },
             { label: "Timer", action: "schedule", id },
             { label: "Historial", action: "history", id },
@@ -1929,7 +1986,11 @@
 
         if (action === "open_ds") {
           const id = btn.getAttribute("data-id") || "";
-          if (id) setDatasourceDetail(id);
+          if (id) {
+            const ds = (state.datasources || []).find((x) => x.id === id);
+            setDatasourceDetail(id);
+            if (ds) syncDraftToDatasource(ds, () => render());
+          }
           return;
         }
 
