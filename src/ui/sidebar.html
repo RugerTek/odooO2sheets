@@ -26,6 +26,15 @@
       h2 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
       h3 { font-size: 12px; margin: 12px 0 8px; }
 
+      .topLoader { position: sticky; top: 0; z-index: 999; height: 3px; background: transparent; }
+      .topLoaderBar { height: 3px; width: 35%; background: rgba(37,99,235,0.9); border-radius: 999px; transform: translateX(-120%); opacity: 0; }
+      body.loading .topLoaderBar { opacity: 1; animation: indeterminate 1.15s infinite; }
+      @keyframes indeterminate {
+        0% { transform: translateX(-120%); width: 25%; }
+        50% { transform: translateX(120%); width: 45%; }
+        100% { transform: translateX(260%); width: 25%; }
+      }
+
       .card {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -73,6 +82,7 @@
       .item { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(15,23,42,0.02); }
       .title { font-weight: 600; }
       .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .title, .meta, .hint { word-break: break-word; }
       .pill { display: inline-flex; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; }
       .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border: 1px solid var(--line); padding: 1px 6px; border-radius: 7px; background: rgba(15,23,42,0.02); }
       .iconBtn {
@@ -205,9 +215,14 @@
     </style>
   </head>
   <body>
+    <div class="topLoader" aria-hidden="true"><div class="topLoaderBar" id="topLoaderBar"></div></div>
     <div class="wrap">
       <h1>Odoo O2Sheets <span class="pill" id="uiBuild"></span></h1>
       <div class="hint" id="ctx"></div>
+      <details style="margin:6px 0 0;">
+        <summary class="meta" style="cursor:pointer;">Info tecnica</summary>
+        <div class="meta" id="ctxTech" style="margin-top:6px;"></div>
+      </details>
       <div class="status" id="statusBar">
         <div class="row">
           <div class="title" id="statusText"></div>
@@ -373,7 +388,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10c";
+      const UI_BUILD = "2026-02-10d";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -481,20 +496,36 @@
           return;
         }
 
+        if (!window.__o2_loadingCount) window.__o2_loadingCount = 0;
+        window.__o2_loadingCount += 1;
+        document.body.classList.add("loading");
+
         let done = false;
         const t = setTimeout(() => {
           if (done) return;
+          try {
+            window.__o2_loadingCount = Math.max(0, (window.__o2_loadingCount || 1) - 1);
+            if (!window.__o2_loadingCount) document.body.classList.remove("loading");
+          } catch (_) {}
           setStatus("err", "Timeout esperando respuesta del servidor.", `Funcion: ${fnName}`);
         }, timeoutMs);
 
         const success = (res) => {
           done = true;
           clearTimeout(t);
+          try {
+            window.__o2_loadingCount = Math.max(0, (window.__o2_loadingCount || 1) - 1);
+            if (!window.__o2_loadingCount) document.body.classList.remove("loading");
+          } catch (_) {}
           if (onOk) onOk(res);
         };
         const failure = (e) => {
           done = true;
           clearTimeout(t);
+          try {
+            window.__o2_loadingCount = Math.max(0, (window.__o2_loadingCount || 1) - 1);
+            if (!window.__o2_loadingCount) document.body.classList.remove("loading");
+          } catch (_) {}
           const msg = (e && (e.message || (e.toString && e.toString()))) || String(e || "Error");
           if (onErr) onErr(e);
           else setStatus("err", msg);
@@ -506,6 +537,10 @@
           const fn = runner && runner[fnName];
           if (typeof fn !== "function") {
             clearTimeout(t);
+            try {
+              window.__o2_loadingCount = Math.max(0, (window.__o2_loadingCount || 1) - 1);
+              if (!window.__o2_loadingCount) document.body.classList.remove("loading");
+            } catch (_) {}
             setStatus(
               "err",
               "Error ejecutando llamada al servidor.",
@@ -516,6 +551,10 @@
           fn.apply(runner, arr);
         } catch (e) {
           clearTimeout(t);
+          try {
+            window.__o2_loadingCount = Math.max(0, (window.__o2_loadingCount || 1) - 1);
+            if (!window.__o2_loadingCount) document.body.classList.remove("loading");
+          } catch (_) {}
           setStatus("err", "Error ejecutando llamada al servidor.", e && (e.message || String(e)));
         }
       }
@@ -527,7 +566,10 @@
           [],
           (res) => {
             state = res;
-            $("ctx").textContent = `Doc: ${res.context.spreadsheetId} | Usuario Google: ${res.context.userEmail}`;
+            $("ctx").textContent = `Usuario Google: ${res.context.userEmail}`;
+            try {
+              $("ctxTech").textContent = `Doc ID: ${res.context.spreadsheetId}`;
+            } catch (_) {}
             render();
             refreshSheets();
             if (res.draft) applyDraft(res.draft);

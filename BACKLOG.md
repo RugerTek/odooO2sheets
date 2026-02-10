@@ -32,8 +32,18 @@ Este backlog esta pensado para marcar OK / NO-OK con checkboxes.
 
 ## Fase 4 - Advanced options
 - [x] Advanced query builder (filtros): Filter Builder (reglas AND) + Advanced JSON
+- [x] Advanced query builder (filtros): OR + grupos visuales (hasta 3 niveles)
 - [ ] Restriccion por permiso Odoo (Administration/Settings)
 - [ ] Guardado por datasource
+
+## UX / Pulido
+- [ ] Conexiones: al editar/usar conexion, que el flujo para editar columnas sea consistente y no confuso (simplificar)
+- [ ] UI: arreglar quiebres visuales (overflow de textos largos, responsive)
+- [ ] Columnas: input "Agregar por path" (ej: move_id.partner_id....display_name) que auto-seleccione la columna si existe (hasta 3 niveles)
+- [ ] Columnas: mejorar feedback cuando "Cargar columnas" / "Actualizar sample" falla (error mas claro)
+- [ ] Sidebar: loader fijo arriba para feedback mientras procesa (runServer)
+- [ ] Ocultar info tecnica por defecto (doc id, etc) y dejarla en "Debug" / "Info tecnica"
+- [ ] Documentacion: como usarlo en otras planillas (template vs add-on publicado)
 
 ## Infra / Repo
 - [x] Definir stack de desarrollo (clasp + TS)
