@@ -68,6 +68,7 @@ export function api_setDraftModel(input: {
     model,
     modelName: (input.modelName || "").trim() || model,
     fields: [],
+    domain: "",
   });
 }
 
@@ -91,6 +92,18 @@ export function api_setDraftFields(input: {
     connectionId: input.connectionId,
     model,
     fields,
+  });
+}
+
+export function api_setDraftDomain(input: { connectionId: string; model: string; domain?: string }): DraftExtraction {
+  const model = (input.model || "").trim();
+  if (!model) throw new Error("Model is required.");
+  // Validate now so errors show inside the dialog.
+  parseDomain(input.domain);
+  return setDraftExtraction({
+    connectionId: input.connectionId,
+    model,
+    domain: (input.domain || "").trim(),
   });
 }
 
@@ -205,20 +218,24 @@ export function api_setCredential(input: {
 }): { ok: true; uid: number; canUseAdvanced: boolean; companies: Array<{ id: number; name: string }>; companyId?: number } {
   const conn = getConnection(input.connectionId);
   if (!conn) throw new Error("Connection not found.");
+  const username = String(input.odooUsername || "").trim();
+  const secret = String(input.odooPassword || "").trim();
+  if (!username) throw new Error("Falta el usuario (login/email) de Odoo.");
+  if (!secret) throw new Error("Falta el password o API key.");
   const session = authenticate({
     odooUrl: conn.odooUrl,
     db: conn.odooDb,
-    username: input.odooUsername,
-    password: input.odooPassword,
+    username,
+    password: secret,
   });
 
   const scope: Credential["scope"] = conn.shareCredentials ? "DOCUMENT" : "USER";
   const cred: Credential = {
     connectionId: conn.id,
     scope,
-    odooUsername: input.odooUsername,
+    odooUsername: username,
     // Placeholder: store plain password/API key. Replace with encryption as per SECURITY.md.
-    secret: input.odooPassword,
+    secret,
     updatedAt: nowIso(),
   };
   saveCredential(cred);
@@ -373,7 +390,14 @@ export function api_getModelFields(input: {
   connectionId: string;
   model: string;
   companyId?: number;
-}): Array<{ fieldName: string; label: string; type: string; relation?: string; help?: string }> {
+}): Array<{
+  fieldName: string;
+  label: string;
+  type: string;
+  relation?: string;
+  help?: string;
+  selection?: Array<{ value: string; label: string }>;
+}> {
   const session = getSessionForConnection(input.connectionId, input.companyId);
   const model = input.model.trim();
   if (!model) throw new Error("Model is required.");
@@ -381,20 +405,34 @@ export function api_getModelFields(input: {
   const mapping = callKw<Record<string, any>>(session, {
     model,
     method: "fields_get",
-    args: [[], ["string", "type", "relation", "help"]],
+    args: [[], ["string", "type", "relation", "help", "selection"]],
     kwargs: {},
   });
 
-  const out: Array<{ fieldName: string; label: string; type: string; relation?: string; help?: string }> = [];
+  const out: Array<{
+    fieldName: string;
+    label: string;
+    type: string;
+    relation?: string;
+    help?: string;
+    selection?: Array<{ value: string; label: string }>;
+  }> = [];
   for (const [fieldName, info] of Object.entries(mapping || {})) {
     const label = typeof info?.string === "string" ? info.string : fieldName;
     const type = typeof info?.type === "string" ? info.type : "unknown";
+    const selection =
+      Array.isArray((info as any)?.selection) && (info as any).selection.length
+        ? (info as any).selection
+            .filter((x: any) => Array.isArray(x) && x.length >= 2)
+            .map((x: any) => ({ value: String(x[0]), label: String(x[1]) }))
+        : undefined;
     out.push({
       fieldName,
       label,
       type,
       relation: typeof info?.relation === "string" ? info.relation : undefined,
       help: typeof info?.help === "string" ? info.help : undefined,
+      selection,
     });
   }
   out.sort((a, b) => a.fieldName.localeCompare(b.fieldName));

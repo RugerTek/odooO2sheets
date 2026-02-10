@@ -87,4 +87,6 @@ export interface DraftExtraction {
   model?: string;
   modelName?: string;
   fields?: DatasourceField[];
+  // Domain JSON string (Odoo domain). Stored in draft so dialogs can update UI without immediately saving a datasource.
+  domain?: string;
 }

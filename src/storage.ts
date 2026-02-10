@@ -167,6 +167,7 @@ export function getDraftExtraction(): DraftExtraction {
     const parsed = JSON.parse(raw) as DraftExtraction;
     parsed.updatedAt ||= "";
     parsed.fields ||= [];
+    if (typeof (parsed as any).domain !== "string") (parsed as any).domain = "";
     return parsed;
   } catch {
     return { updatedAt: "", fields: [] };
@@ -181,6 +182,7 @@ export function setDraftExtraction(patch: Partial<DraftExtraction>): DraftExtrac
     model: patch.model ?? prev.model,
     modelName: patch.modelName ?? prev.modelName,
     fields: (patch.fields as DatasourceField[] | undefined) ?? prev.fields ?? [],
+    domain: typeof patch.domain === "string" ? patch.domain : prev.domain,
   };
   const props = PropertiesService.getUserProperties();
   props.setProperty(USER_DRAFT_KEY, JSON.stringify(next));

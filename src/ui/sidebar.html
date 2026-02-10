@@ -331,8 +331,16 @@
             <input id="ds_order" placeholder="id desc" />
           </div>
         </div>
-        <label>Filtro (Domain) opcional (JSON)</label>
-        <textarea id="ds_domain" placeholder='[["active","=",true]]'></textarea>
+        <div class="row" style="margin-top:10px; justify-content:space-between;">
+          <div class="meta col"><b>Filtros (opcional)</b></div>
+          <button class="primary" id="btnEditFilters" type="button">Editar filtros</button>
+        </div>
+        <div class="hint" id="ds_filters_summary">Sin filtros.</div>
+        <details style="margin-top:8px;">
+          <summary class="title" style="cursor:pointer;">Avanzado (JSON)</summary>
+          <div class="hint">Si queres OR/AND complejos, edita el JSON aca.</div>
+          <textarea id="ds_domain" placeholder='[["active","=",true]]'></textarea>
+        </details>
         <div class="grid2">
           <div>
             <label>Modo de escritura</label>
@@ -365,7 +373,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-09q";
+      const UI_BUILD = "2026-02-10a";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -838,18 +846,25 @@
                     </div>
                   </div>
 
-                  <div class="grid2" style="margin-top:8px;">
-                    <div>
-                      <label>Limite</label>
-                      <input id="d_limit" type="number" value="${escapeHtml(dsCurrent.limit || 80)}" />
-                    </div>
-                    <div>
-                      <label>Orden</label>
-                      <input id="d_order" value="${escapeHtml(dsCurrent.orderBy || "")}" placeholder="id desc" />
-                    </div>
+                   <div class="grid2" style="margin-top:8px;">
+                     <div>
+                       <label>Limite</label>
+                       <input id="d_limit" type="number" value="${escapeHtml(dsCurrent.limit || 80)}" />
+                     </div>
+                     <div>
+                       <label>Orden</label>
+                       <input id="d_order" value="${escapeHtml(dsCurrent.orderBy || "")}" placeholder="id desc" />
+                     </div>
+                   </div>
+                  <div class="row" style="margin-top:10px; justify-content:space-between;">
+                    <div class="meta col"><b>Filtros</b></div>
+                    <button class="primary" data-action="pick_filters_detail" data-id="${dsCurrent.id}" type="button">Editar filtros</button>
                   </div>
-                  <label>Filtro (Domain) (JSON)</label>
-                  <textarea id="d_domain" style="min-height:72px;">${escapeHtml(dsCurrent.domain || "")}</textarea>
+                  <div class="hint" id="d_filters_summary">Sin filtros.</div>
+                  <details style="margin-top:8px;">
+                    <summary class="title" style="cursor:pointer;">Avanzado (JSON)</summary>
+                    <textarea id="d_domain" style="min-height:72px;">${escapeHtml(dsCurrent.domain || "")}</textarea>
+                  </details>
                   <div class="grid2" style="margin-top:8px;">
                     <div>
                       <label>Modo de escritura</label>
@@ -922,6 +937,11 @@
               dCompany.value = dsCurrent.companyId ? String(dsCurrent.companyId) : "";
             }
           } catch (_) {}
+          try {
+            const dDom = $("d_domain");
+            if (dDom) dDom.addEventListener("input", updateFilterSummaries);
+          } catch (_) {}
+          updateFilterSummaries();
         } else {
           currentDatasourceId = "";
           openMenuForDatasourceId = "";
@@ -1046,6 +1066,33 @@
       $("btnReload").addEventListener("click", loadBootstrap);
       let draftUpdatedAt = "";
 
+      function describeDomain(domainStr) {
+        const raw = String(domainStr || "").trim();
+        if (!raw) return "Sin filtros.";
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return "Filtro avanzado (JSON).";
+          const simple =
+            parsed.length === 0 ||
+            parsed.every((x) => Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string");
+          if (!simple) return "Filtro avanzado (JSON).";
+          return parsed.length ? `${parsed.length} regla(s).` : "Sin filtros.";
+        } catch {
+          return "JSON invalido (corregir en Avanzado).";
+        }
+      }
+
+      function updateFilterSummaries() {
+        try {
+          const el = $("ds_filters_summary");
+          if (el) el.textContent = describeDomain($("ds_domain") ? $("ds_domain").value : "");
+        } catch (_) {}
+        try {
+          const el = $("d_filters_summary");
+          if (el) el.textContent = describeDomain($("d_domain") ? $("d_domain").value : "");
+        } catch (_) {}
+      }
+
       $("login_conn").addEventListener("change", () => {
         const connId = $("login_conn").value;
         try {
@@ -1104,8 +1151,18 @@
           .sort((a, b) => (a.order || 0) - (b.order || 0))
           .map((f) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, type: f.type || "" }));
 
+        if (typeof draft.domain === "string") {
+          try {
+            if ($("ds_domain")) $("ds_domain").value = draft.domain || "";
+          } catch (_) {}
+          try {
+            if ($("d_domain")) $("d_domain").value = draft.domain || "";
+          } catch (_) {}
+        }
+
         updateChosenModelUI();
         updateChosenFieldsUI();
+        updateFilterSummaries();
       }
 
       function pollDraftChange(prevUpdatedAt, onChanged) {
@@ -1194,22 +1251,51 @@
         );
       });
 
+      $("btnEditFilters").addEventListener("click", () => {
+        const connId = $("ds_conn").value || $("login_conn").value;
+        if (!connId) return setStatus("err", "Primero selecciona una conexion y hace login.");
+        const model = ($("ds_model").value || "").trim();
+        if (!model) return setStatus("err", "Primero selecciona una tabla.");
+        const prev = draftUpdatedAt;
+        const companyId = $("ds_company") ? Number($("ds_company").value || "") || undefined : undefined;
+        const curDomain = $("ds_domain") ? $("ds_domain").value : "";
+        setStatus("info", "Abriendo editor de filtros...");
+        runServer(
+          "ui_openFilterBuilderDialog",
+          [connId, model, curDomain, companyId],
+          () => {
+            pollDraftChange(prev, () => {
+              setStatus("ok", "Filtros actualizados.");
+              updateFilterSummaries();
+            });
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setStatus("err", "No pude abrir el editor de filtros.", msg);
+          }
+        );
+      });
+
+      $("ds_domain").addEventListener("input", updateFilterSummaries);
+
       $("btnClearDraft").addEventListener("click", () => {
         setStatus("info", "Limpiando seleccion...");
         runServer(
           "api_clearDraftExtraction",
           [],
-          () => {
-            draftUpdatedAt = "";
-            try { $("ds_title").value = ""; } catch (_) {}
-            $("ds_model").value = "";
-            chosenModel = { model: "", name: "" };
-            selectedFields = [];
-            updateChosenModelUI();
-            updateChosenFieldsUI();
-            setEditingUI(null);
-            setStatus("ok", "Seleccion limpiada.");
-          },
+           () => {
+             draftUpdatedAt = "";
+             try { $("ds_title").value = ""; } catch (_) {}
+             $("ds_model").value = "";
+             chosenModel = { model: "", name: "" };
+             selectedFields = [];
+             try { $("ds_domain").value = ""; } catch (_) {}
+             updateChosenModelUI();
+             updateChosenFieldsUI();
+             updateFilterSummaries();
+             setEditingUI(null);
+             setStatus("ok", "Seleccion limpiada.");
+           },
           (e) => {
             const msg = (e && (e.message || String(e))) || "Error";
             setStatus("err", "No se pudo limpiar.", msg);
@@ -1379,21 +1465,49 @@
             const id = openEl.getAttribute("data-open-ds");
             if (id) {
               const ds = (state.datasources || []).find((x) => x.id === id);
-              if (ds) {
-                // Prime draft for pickers and for showing pending changes in detail.
-                try {
-                  editingDatasourceId = ds.id;
-                  $("ds_conn").value = ds.connectionId;
-                  $("ds_model").value = ds.odooModel;
-                  chosenModel = { model: ds.odooModel, name: ds.odooModel };
-                  selectedFields = (ds.fields || []).slice().sort((a,b) => (a.order||0)-(b.order||0)).map((f) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, type: f.type || "" }));
-                  updateChosenModelUI();
-                  updateChosenFieldsUI();
-                } catch (_) {}
-              }
-              return setDatasourceDetail(id);
-            }
-          }
+               if (ds) {
+                 // Prime draft for pickers and for showing pending changes in detail.
+                 try {
+                   editingDatasourceId = ds.id;
+                   $("ds_conn").value = ds.connectionId;
+                   $("ds_model").value = ds.odooModel;
+                   chosenModel = { model: ds.odooModel, name: ds.odooModel };
+                   selectedFields = (ds.fields || []).slice().sort((a,b) => (a.order||0)-(b.order||0)).map((f) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, type: f.type || "" }));
+                   updateChosenModelUI();
+                   updateChosenFieldsUI();
+
+                    // Sync server-side draft too (so dialogs open with current selection + filters).
+                    const connId = ds.connectionId;
+                    const model = ds.odooModel;
+                    const modelName = model;
+                    const fields = (selectedFields || []).map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx, type: f.type || "" }));
+                    runServer(
+                      "api_setDraftModel",
+                      [{ connectionId: connId, model, modelName }],
+                      (draft1) => {
+                        applyDraft(draft1);
+                        runServer(
+                          "api_setDraftFields",
+                          [{ connectionId: connId, model, fields }],
+                          (draft2) => {
+                            applyDraft(draft2);
+                            runServer(
+                              "api_setDraftDomain",
+                              [{ connectionId: connId, model, domain: ds.domain || "" }],
+                              (draft3) => applyDraft(draft3),
+                              () => {}
+                            );
+                          },
+                          () => {}
+                        );
+                      },
+                      () => {}
+                    );
+                 } catch (_) {}
+               }
+               return setDatasourceDetail(id);
+             }
+           }
           if (openMenuForDatasourceId) {
             openMenuForDatasourceId = "";
             render();
@@ -1491,6 +1605,33 @@
             (e) => {
               const msg = (e && (e.message || String(e))) || "Error";
               setStatus("err", "No pude abrir selector de columnas.", msg);
+            }
+          );
+          return;
+        }
+
+        if (action === "pick_filters_detail") {
+          const id = btn.getAttribute("data-id");
+          const ds = (state.datasources || []).find((x) => x.id === id);
+          if (!id || !ds) return;
+          const connId = ($("d_conn") && $("d_conn").value) ? $("d_conn").value : ds.connectionId;
+          const model = ($("ds_model").value || "").trim() || ds.odooModel;
+          const companyId = ($("d_company") && $("d_company").value) ? Number($("d_company").value) : undefined;
+          const prev = draftUpdatedAt;
+          const curDomain = ($("d_domain") && $("d_domain").value) ? $("d_domain").value : (ds.domain || "");
+          setStatus("info", "Abriendo editor de filtros...");
+          runServer(
+            "ui_openFilterBuilderDialog",
+            [connId, model, curDomain, companyId],
+            () => {
+              pollDraftChange(prev, () => {
+                setStatus("ok", "Filtros actualizados.");
+                render();
+              });
+            },
+            (e) => {
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude abrir el editor de filtros.", msg);
             }
           );
           return;
@@ -1717,8 +1858,22 @@
                 [{ connectionId: connId, model, fields }],
                 (draft2) => {
                   applyDraft(draft2);
-                  setEditingUI(ds);
-                  setStatus("ok", "Listo para editar. Cambia lo que quieras y toca Guardar cambios.");
+                  runServer(
+                    "api_setDraftDomain",
+                    [{ connectionId: connId, model, domain: ds.domain || "" }],
+                    (draft3) => {
+                      applyDraft(draft3);
+                      setEditingUI(ds);
+                      setStatus("ok", "Listo para editar. Cambia lo que quieras y toca Guardar cambios.");
+                    },
+                    (e2) => {
+                      // Domain is optional; don't block edit if invalid.
+                      applyDraft(draft2);
+                      setEditingUI(ds);
+                      const msg2 = (e2 && (e2.message || String(e2))) || "Error";
+                      setStatus("info", "Listo para editar (nota: el filtro avanzado tiene un problema).", msg2);
+                    }
+                  );
                 },
                 (e) => {
                   const msg = (e && (e.message || String(e))) || "Error";

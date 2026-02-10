@@ -1,0 +1,579 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #ffffff;
+        --muted: #475569;
+        --text: #0f172a;
+        --line: rgba(15, 23, 42, 0.12);
+        --accent: #16a34a;
+        --danger: #dc2626;
+        --info: #2563eb;
+      }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+      .wrap { padding: 14px; }
+      .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      h1 { font-size: 16px; margin: 0; }
+      .muted { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .col { flex: 1; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+      .panel { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: rgba(15,23,42,0.01); }
+      .panelTitle { font-weight: 700; margin: 0 0 8px; }
+      .scroll { max-height: 360px; overflow: auto; padding-right: 4px; }
+      input, select, textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid rgba(15, 23, 42, 0.18); border-radius: 10px; }
+      textarea { min-height: 90px; }
+      button { border: 1px solid rgba(15, 23, 42, 0.14); background: rgba(15, 23, 42, 0.04); color: var(--text); padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+      button.primary { border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.10); }
+      button.danger { border-color: rgba(220,38,38,0.35); background: rgba(220,38,38,0.08); }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .msg { margin-top: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(15,23,42,0.02); }
+      .msg.ok { border-color: rgba(22,163,74,0.35); }
+      .msg.err { border-color: rgba(220,38,38,0.35); }
+      .list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+      .item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(15,23,42,0.02); cursor: pointer; }
+      .item:hover { background: rgba(37,99,235,0.06); border-color: rgba(37,99,235,0.25); }
+      .title { font-weight: 700; }
+      .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+      .rule { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+      .rule.active { outline: 2px solid rgba(37,99,235,0.35); }
+      .smallBtn { padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+      label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 2px; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      details > summary { cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Filtros</h1>
+          <div class="muted" id="subtitle"></div>
+        </div>
+        <div class="row">
+          <button id="btnCancel" type="button">Cancelar</button>
+          <button class="primary" id="btnSave" type="button">Guardar</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top: 12px;">
+        <button id="btnLoad" type="button">Cargar campos</button>
+        <div class="col muted">Tip: agrega reglas simples. Para dominios complejos usa el modo avanzado (JSON).</div>
+        <button id="btnAddRule" type="button">Agregar regla</button>
+        <button class="danger" id="btnClearRules" type="button">Quitar todas</button>
+      </div>
+
+      <div id="msg"></div>
+
+      <div class="grid2" style="margin-top: 12px;">
+        <div class="panel">
+          <div class="panelTitle">Campos</div>
+          <input id="q" placeholder="Buscar campo (ej: date, partner, amount, state)" />
+          <div class="scroll">
+            <div class="list" id="fields"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panelTitle">Reglas (AND)</div>
+          <div class="hint">Hace click en un campo para agregarlo como regla. Podes editar operador y valor.</div>
+          <div class="list" id="rules"></div>
+
+          <div class="sep" style="height:1px;background:var(--line);margin:12px 0;"></div>
+          <div class="panelTitle">Preview domain</div>
+          <textarea id="domainPreview" readonly></textarea>
+          <details style="margin-top:10px;">
+            <summary class="title">Modo avanzado (JSON)</summary>
+            <div class="hint">Si tu filtro es complejo (OR, AND anidados), editá el JSON directamente.</div>
+            <textarea id="domainAdvanced" placeholder='[["active","=",true]]'></textarea>
+            <div class="row" style="margin-top:8px;">
+              <label class="row" style="gap:8px; margin:0;"><input type="checkbox" id="useAdvanced" /> Usar avanzado</label>
+              <div class="col"></div>
+              <button class="smallBtn" id="btnCopy" type="button">Copiar JSON</button>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const INITIAL = JSON.parse("<?= initialJson ?>");
+      const $ = (id) => document.getElementById(id);
+
+      let allFields = [];
+      let rules = [];
+      let activeRuleId = "";
+      let loaded = false;
+
+      function setMsg(kind, text) {
+        const el = $("msg");
+        el.innerHTML = "";
+        if (!text) return;
+        const d = document.createElement("div");
+        d.className = "msg " + (kind === "ok" ? "ok" : "err");
+        d.textContent = text;
+        el.appendChild(d);
+      }
+
+      function safeCopyToClipboard(text) {
+        const t = String(text || "");
+        if (!t) return false;
+        try {
+          if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t);
+            return true;
+          }
+        } catch (_) {}
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = t;
+          ta.style.position = "fixed";
+          ta.style.left = "-1000px";
+          ta.style.top = "-1000px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          return ok;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function uid() {
+        return Math.random().toString(16).slice(2) + Date.now().toString(16);
+      }
+
+      function fieldByName(name) {
+        return allFields.find((f) => f.fieldName === name) || null;
+      }
+
+      function opsForField(f) {
+        const t = (f && f.type) ? String(f.type) : "unknown";
+        const base = [
+          { id: "__set__", label: "esta seteado" },
+          { id: "__empty__", label: "esta vacio" },
+        ];
+
+        if (t === "boolean") return [{ id: "=", label: "es" }].concat(base);
+        if (t === "selection") return [{ id: "=", label: "es" }, { id: "!=", label: "no es" }].concat(base);
+        if (t === "date" || t === "datetime") {
+          return [
+            { id: "=", label: "igual" },
+            { id: "!=", label: "distinto" },
+            { id: ">", label: ">" },
+            { id: ">=", label: ">=" },
+            { id: "<", label: "<" },
+            { id: "<=", label: "<=" },
+          ].concat(base);
+        }
+        if (t === "integer" || t === "float" || t === "monetary") {
+          return [
+            { id: "=", label: "igual" },
+            { id: "!=", label: "distinto" },
+            { id: ">", label: ">" },
+            { id: ">=", label: ">=" },
+            { id: "<", label: "<" },
+            { id: "<=", label: "<=" },
+            { id: "in", label: "en lista" },
+            { id: "not in", label: "no en lista" },
+          ].concat(base);
+        }
+        if (t === "many2one") {
+          return [
+            { id: "=", label: "id =" },
+            { id: "!=", label: "id !=" },
+            { id: "__name_ilike__", label: "nombre contiene" },
+            { id: "__name_not_ilike__", label: "nombre NO contiene" },
+          ].concat(base);
+        }
+        // char, text, etc.
+        return [
+          { id: "ilike", label: "contiene" },
+          { id: "not ilike", label: "NO contiene" },
+          { id: "=", label: "igual" },
+          { id: "!=", label: "distinto" },
+          { id: "in", label: "en lista" },
+          { id: "not in", label: "no en lista" },
+        ].concat(base);
+      }
+
+      function convertValue(f, op, raw) {
+        const t = (f && f.type) ? String(f.type) : "unknown";
+        if (op === "__set__" || op === "__empty__") return null;
+
+        if (op === "in" || op === "not in") {
+          const items = String(raw || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (t === "integer") return items.map((x) => Number.parseInt(x, 10)).filter((n) => Number.isFinite(n));
+          if (t === "float" || t === "monetary") return items.map((x) => Number.parseFloat(x)).filter((n) => Number.isFinite(n));
+          return items;
+        }
+
+        if (t === "boolean") return Boolean(raw);
+        if (t === "integer") return Number.parseInt(String(raw || "0"), 10);
+        if (t === "float" || t === "monetary") return Number.parseFloat(String(raw || "0"));
+        if (t === "date") return String(raw || "");
+        if (t === "datetime") {
+          const v = String(raw || "");
+          if (!v) return "";
+          // datetime-local returns YYYY-MM-DDTHH:MM (or with seconds). Odoo expects "YYYY-MM-DD HH:MM:SS"
+          if (v.includes("T")) {
+            const parts = v.split("T");
+            const d = parts[0] || "";
+            const tm = (parts[1] || "").replace("Z", "");
+            const hhmm = tm.length >= 5 ? tm.slice(0, 5) : tm;
+            return `${d} ${hhmm}:00`;
+          }
+          return v;
+        }
+        if (t === "many2one") {
+          if (op === "=" || op === "!=") return Number.parseInt(String(raw || "0"), 10);
+          return String(raw || "");
+        }
+        if (t === "selection") return String(raw || "");
+        return String(raw || "");
+      }
+
+      function ruleToDomainTerm(r) {
+        const f = fieldByName(r.fieldName) || { fieldName: r.fieldName, type: r.type || "unknown" };
+        const op = r.op;
+        if (op === "__set__") return [r.fieldName, "!=", false];
+        if (op === "__empty__") return [r.fieldName, "=", false];
+        if (op === "__name_ilike__") return [r.fieldName + ".name", "ilike", String(r.value || "")];
+        if (op === "__name_not_ilike__") return [r.fieldName + ".name", "not ilike", String(r.value || "")];
+        const v = convertValue(f, op, r.value);
+        return [r.fieldName, op, v];
+      }
+
+      function computeDomainFromRules() {
+        const out = [];
+        for (const r of rules) {
+          if (!r.fieldName) continue;
+          if (!r.op) continue;
+          const hasVal = !(r.value === null || r.value === undefined) && (typeof r.value !== "string" || r.value.trim() !== "");
+
+          if ((r.op === "__name_ilike__" || r.op === "__name_not_ilike__") && !hasVal) continue;
+
+          // allow empty values only for set/empty; other ops usually require a value
+          if (r.op === "in" || r.op === "not in") {
+            const arr = convertValue(fieldByName(r.fieldName), r.op, r.value);
+            if (!arr || !arr.length) continue;
+          } else if (r.op === "__set__" || r.op === "__empty__") {
+            // ok
+          } else if (fieldByName(r.fieldName)?.type === "boolean") {
+            // ok (value comes from dropdown)
+          } else if (!hasVal) {
+            continue;
+          }
+          out.push(ruleToDomainTerm(r));
+        }
+        return out;
+      }
+
+      function renderFields() {
+        const q = String($("q").value || "").trim().toLowerCase();
+        const box = $("fields");
+        box.innerHTML = "";
+        const items = (allFields || [])
+          .filter((f) => {
+            if (!q) return true;
+            return String(f.fieldName || "").toLowerCase().includes(q) || String(f.label || "").toLowerCase().includes(q);
+          })
+          .slice(0, 250);
+        if (!items.length) {
+          const d = document.createElement("div");
+          d.className = "muted";
+          d.textContent = loaded ? "No encontre campos con esa busqueda." : "Toca Cargar campos.";
+          box.appendChild(d);
+          return;
+        }
+        for (const f of items) {
+          const it = document.createElement("div");
+          it.className = "item";
+          it.innerHTML = `<div class="title">${escapeHtml(f.label || f.fieldName)}</div><div class="meta">${escapeHtml(f.fieldName)} | ${escapeHtml(f.type || "")}</div>`;
+          it.addEventListener("click", () => {
+            // If there's an active rule with empty field, fill it; else add new rule.
+            const idx = rules.findIndex((r) => r.id === activeRuleId);
+            if (idx >= 0 && !rules[idx].fieldName) {
+              rules[idx].fieldName = f.fieldName;
+              rules[idx].type = f.type || "";
+              rules[idx].op = (opsForField(f)[0] || {}).id || "=";
+              rules[idx].value = "";
+              if (f.type === "boolean") rules[idx].value = true;
+              if (f.type === "selection" && f.selection && f.selection.length) rules[idx].value = f.selection[0].value;
+            } else {
+              const r = { id: uid(), fieldName: f.fieldName, type: f.type || "", op: (opsForField(f)[0] || {}).id || "=", value: "" };
+              if (f.type === "boolean") r.value = true;
+              if (f.type === "selection" && f.selection && f.selection.length) r.value = f.selection[0].value;
+              rules.push(r);
+              activeRuleId = r.id;
+            }
+            renderRules();
+          });
+          box.appendChild(it);
+        }
+      }
+
+      function renderRules() {
+        const box = $("rules");
+        box.innerHTML = "";
+        if (!rules.length) {
+          const d = document.createElement("div");
+          d.className = "muted";
+          d.textContent = "Sin reglas. Hace click en un campo para agregarlo.";
+          box.appendChild(d);
+        } else {
+          for (const r of rules) {
+            const f = r.fieldName ? fieldByName(r.fieldName) : null;
+            const ops = opsForField(f || { type: r.type || "char" });
+            const el = document.createElement("div");
+            el.className = "rule" + (r.id === activeRuleId ? " active" : "");
+            el.innerHTML = `
+              <div class="row" style="justify-content:space-between;">
+                <div>
+                  <div class="title">${escapeHtml(f ? (f.label || f.fieldName) : (r.fieldName || "(sin campo)"))}</div>
+                  <div class="meta">${escapeHtml(r.fieldName || "")} ${r.type ? "| " + escapeHtml(r.type) : ""}</div>
+                </div>
+                <button class="smallBtn danger" data-action="rm" data-id="${escapeHtml(r.id)}" type="button">Quitar</button>
+              </div>
+              <div class="grid2" style="margin-top:10px;">
+                <div>
+                  <label>Operador</label>
+                  <select data-action="op" data-id="${escapeHtml(r.id)}"></select>
+                </div>
+                <div>
+                  <label>Valor</label>
+                  <div data-slot="val" data-id="${escapeHtml(r.id)}"></div>
+                </div>
+              </div>
+            `;
+            el.addEventListener("click", (ev) => {
+              const btn = ev.target && ev.target.closest && ev.target.closest("button");
+              if (btn) return;
+              activeRuleId = r.id;
+              renderRules();
+            });
+            box.appendChild(el);
+
+            // Fill operator select
+            const sel = el.querySelector('select[data-action="op"][data-id="' + r.id + '"]');
+            sel.innerHTML = "";
+            for (const o of ops) {
+              const opt = document.createElement("option");
+              opt.value = o.id;
+              opt.textContent = o.label;
+              sel.appendChild(opt);
+            }
+            if (!r.op) r.op = (ops[0] || {}).id || "=";
+            sel.value = r.op;
+            sel.addEventListener("change", () => {
+              r.op = sel.value;
+              // reset value for some types
+              if (r.type === "boolean") r.value = true;
+              renderRules();
+            });
+
+            // Render value input
+            const slot = el.querySelector('div[data-slot="val"][data-id="' + r.id + '"]');
+            slot.innerHTML = "";
+            if (r.op === "__set__" || r.op === "__empty__") {
+              const d = document.createElement("div");
+              d.className = "muted";
+              d.textContent = "No requiere valor.";
+              slot.appendChild(d);
+            } else if (r.type === "boolean") {
+              const s = document.createElement("select");
+              s.innerHTML = `<option value="true">true</option><option value="false">false</option>`;
+              s.value = String(Boolean(r.value));
+              s.addEventListener("change", () => (r.value = s.value === "true"));
+              slot.appendChild(s);
+            } else if (r.type === "selection" && f && f.selection && f.selection.length) {
+              const s = document.createElement("select");
+              for (const x of f.selection) {
+                const opt = document.createElement("option");
+                opt.value = x.value;
+                opt.textContent = x.label;
+                s.appendChild(opt);
+              }
+              s.value = String(r.value || f.selection[0].value);
+              s.addEventListener("change", () => (r.value = s.value));
+              slot.appendChild(s);
+            } else if (r.type === "date") {
+              const inp = document.createElement("input");
+              inp.type = "date";
+              inp.value = String(r.value || "");
+              inp.addEventListener("input", () => (r.value = inp.value));
+              slot.appendChild(inp);
+            } else if (r.type === "datetime") {
+              const inp = document.createElement("input");
+              inp.type = "datetime-local";
+              // best-effort for existing "YYYY-MM-DD HH:MM:SS"
+              const cur = String(r.value || "");
+              inp.value = cur.includes(" ") ? cur.replace(" ", "T").slice(0, 16) : cur;
+              inp.addEventListener("input", () => (r.value = inp.value));
+              slot.appendChild(inp);
+            } else {
+              const inp = document.createElement("input");
+              inp.placeholder = (r.op === "in" || r.op === "not in") ? "separado por coma (ej: 1,2,3)" : "valor";
+              inp.value = String(r.value || "");
+              inp.addEventListener("input", () => (r.value = inp.value));
+              slot.appendChild(inp);
+            }
+          }
+        }
+
+        // Update preview
+        const dom = computeDomainFromRules();
+        $("domainPreview").value = JSON.stringify(dom);
+        if (!$("useAdvanced").checked) {
+          // Keep advanced in sync, but don't override user's manual edit when advanced is on.
+          $("domainAdvanced").value = JSON.stringify(dom, null, 0);
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function tryInitFromDomainString(domainStr) {
+        const raw = String(domainStr || "").trim();
+        if (!raw) {
+          rules = [];
+          activeRuleId = "";
+          $("domainAdvanced").value = "";
+          $("useAdvanced").checked = false;
+          renderRules();
+          return;
+        }
+        try {
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) throw new Error("Domain no es un array.");
+          // Only support simple AND domains in builder mode: [[field,op,val], ...]
+          const simple = parsed.every((x) => Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string");
+          if (!simple) {
+            $("useAdvanced").checked = true;
+            $("domainAdvanced").value = raw;
+            setMsg("ok", "Dominio complejo detectado: se abre en modo avanzado.");
+            rules = [];
+            activeRuleId = "";
+            renderRules();
+            return;
+          }
+          rules = parsed.map((t) => {
+            const fieldName = String(t[0] || "");
+            const op = String(t[1] || "=");
+            const f = fieldByName(fieldName);
+            return { id: uid(), fieldName, type: f ? (f.type || "") : "", op, value: t[2] };
+          });
+          activeRuleId = rules.length ? rules[rules.length - 1].id : "";
+          $("useAdvanced").checked = false;
+          setMsg("ok", "");
+          renderRules();
+        } catch (e) {
+          $("useAdvanced").checked = true;
+          $("domainAdvanced").value = raw;
+          setMsg("err", "No pude leer el domain. Se abre en modo avanzado.");
+          rules = [];
+          activeRuleId = "";
+          renderRules();
+        }
+      }
+
+      function loadFields() {
+        setMsg("ok", "");
+        $("btnLoad").disabled = true;
+        google.script.run
+          .withSuccessHandler((res) => {
+            allFields = (res || []).slice();
+            loaded = true;
+            renderFields();
+            // Re-infer rule types now that we have fields.
+            for (const r of rules) {
+              const f = fieldByName(r.fieldName);
+              if (f) r.type = f.type || r.type || "";
+            }
+            renderRules();
+            $("btnLoad").disabled = false;
+          })
+          .withFailureHandler((e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+            $("btnLoad").disabled = false;
+          })
+          .api_getModelFields({
+            connectionId: INITIAL.connectionId,
+            model: INITIAL.model,
+            companyId: INITIAL.companyId,
+          });
+      }
+
+      $("btnCancel").addEventListener("click", () => google.script.host.close());
+      $("btnCopy").addEventListener("click", () => {
+        const ok = safeCopyToClipboard($("domainAdvanced").value || $("domainPreview").value);
+        setMsg(ok ? "ok" : "err", ok ? "Copiado." : "No pude copiar.");
+      });
+      $("btnLoad").addEventListener("click", loadFields);
+      $("q").addEventListener("input", renderFields);
+      $("btnAddRule").addEventListener("click", () => {
+        const r = { id: uid(), fieldName: "", type: "", op: "=", value: "" };
+        rules.push(r);
+        activeRuleId = r.id;
+        renderRules();
+      });
+      $("btnClearRules").addEventListener("click", () => {
+        rules = [];
+        activeRuleId = "";
+        renderRules();
+      });
+
+      document.body.addEventListener("click", (ev) => {
+        const btn = ev.target && ev.target.closest && ev.target.closest("button[data-action]");
+        const action = btn ? btn.getAttribute("data-action") : "";
+        const id = btn ? btn.getAttribute("data-id") : "";
+        if (!action) return;
+        if (action === "rm") {
+          rules = rules.filter((r) => r.id !== id);
+          if (activeRuleId === id) activeRuleId = rules.length ? rules[rules.length - 1].id : "";
+          renderRules();
+        }
+      });
+
+      $("btnSave").addEventListener("click", () => {
+        setMsg("ok", "");
+        $("btnSave").disabled = true;
+        const useAdv = $("useAdvanced").checked;
+        const domainStr = useAdv ? String($("domainAdvanced").value || "").trim() : JSON.stringify(computeDomainFromRules());
+        google.script.run
+          .withSuccessHandler(() => {
+            google.script.host.close();
+          })
+          .withFailureHandler((e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setMsg("err", msg);
+            $("btnSave").disabled = false;
+          })
+          .api_setDraftDomain({ connectionId: INITIAL.connectionId, model: INITIAL.model, domain: domainStr });
+      });
+
+      // Init
+      $("subtitle").textContent = `${INITIAL.connectionTitle || ""} | ${INITIAL.model || ""}`;
+      $("domainAdvanced").value = String(INITIAL.currentDomain || "").trim();
+      // Load fields automatically (so selection fields work).
+      loadFields();
+      // Seed rules after fields load; but keep a best-effort init now too.
+      tryInitFromDomainString(INITIAL.currentDomain || "");
+    </script>
+  </body>
+</html>

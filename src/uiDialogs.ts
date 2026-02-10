@@ -35,6 +35,29 @@ export function ui_openColumnsPickerDialog(connectionId: string, model: string, 
   SpreadsheetApp.getUi().showModalDialog(html, "Seleccionar columnas");
 }
 
+export function ui_openFilterBuilderDialog(connectionId: string, model: string, currentDomain?: string, companyId?: number): void {
+  const conn = getConnection(connectionId);
+  if (!conn) throw new Error("Connection not found.");
+  const m = (model || "").trim();
+  if (!m) throw new Error("Model is required.");
+  const draft = getDraftExtraction();
+  const dom =
+    typeof currentDomain === "string"
+      ? currentDomain
+      : draft.model === m
+        ? draft.domain || ""
+        : "";
+  const html = makeTemplate("ui/filterBuilder", "Filtros", {
+    connectionId: conn.id,
+    connectionTitle: conn.title,
+    companyId: companyId === undefined || companyId === null ? undefined : Number(companyId),
+    model: m,
+    modelName: draft.model === m ? draft.modelName || m : m,
+    currentDomain: dom || "",
+  });
+  SpreadsheetApp.getUi().showModalDialog(html, "Filtros");
+}
+
 export function ui_openScheduleDialog(datasourceId: string): void {
   const ds = getDatasource(datasourceId);
   if (!ds) throw new Error("Datasource not found.");

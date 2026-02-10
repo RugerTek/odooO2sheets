@@ -18,6 +18,7 @@ import {
   api_renameDatasource,
   api_searchModels,
   api_setConnectionCompany,
+  api_setDraftDomain,
   api_setDraftFields,
   api_setDraftModel,
   api_setCredential,
@@ -28,7 +29,7 @@ import {
   refreshDatasourceById,
 } from "./service";
 import { runSchedulerTick_ } from "./scheduler";
-import { ui_openColumnsPickerDialog, ui_openHistoryDialog, ui_openModelPickerDialog, ui_openRenameDatasourceDialog, ui_openScheduleDialog } from "./uiDialogs";
+import { ui_openColumnsPickerDialog, ui_openFilterBuilderDialog, ui_openHistoryDialog, ui_openModelPickerDialog, ui_openRenameDatasourceDialog, ui_openScheduleDialog } from "./uiDialogs";
 
 function onOpen(): void {
   SpreadsheetApp.getUi()
@@ -78,10 +79,12 @@ function showSidebar(): void {
 (globalThis as any).api_testOdooUrl = api_testOdooUrl;
 (globalThis as any).api_setDraftModel = api_setDraftModel;
 (globalThis as any).api_setDraftFields = api_setDraftFields;
+(globalThis as any).api_setDraftDomain = api_setDraftDomain;
 (globalThis as any).api_clearDraftExtraction = api_clearDraftExtraction;
 
 (globalThis as any).ui_openModelPickerDialog = ui_openModelPickerDialog;
 (globalThis as any).ui_openColumnsPickerDialog = ui_openColumnsPickerDialog;
+(globalThis as any).ui_openFilterBuilderDialog = ui_openFilterBuilderDialog;
 (globalThis as any).ui_openScheduleDialog = ui_openScheduleDialog;
 (globalThis as any).ui_openHistoryDialog = ui_openHistoryDialog;
 (globalThis as any).ui_openRenameDatasourceDialog = ui_openRenameDatasourceDialog;

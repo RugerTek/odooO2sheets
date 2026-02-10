@@ -3,25 +3,26 @@
 Este backlog esta pensado para marcar OK / NO-OK con checkboxes.
 
 ## Fase 1 - MVP (core)
-- [ ] Add-on base (Apps Script): menu + sidebar
-- [ ] UI: Home/Crear extraccion, Connections, Datasources
-- [ ] Connections CRUD (Name inmutable, Title editable)
-- [ ] Validacion conectividad: URL accesible + DB + login OK
-- [ ] Auth Odoo: JSON-RPC /web/session/authenticate
-- [ ] Listado de modelos (selector modulo/modelo) y busqueda
-- [ ] Selector de campos + orden + mapping a headers
-- [ ] Ejecutar extraccion: search_read y escritura en sheet
-- [ ] Write mode: REPLACE vs APPEND
-- [ ] Estado por datasource: last_run (timestamp, filas, duracion, error)
-- [ ] Manejo limites: 6 min, 50MB, celdas/filas, truncamiento 1000 chars
-- [ ] Persistencia: DocumentProperties (datasources) + UserProperties (credentials)
+- [x] Add-on base (Apps Script): menu + sidebar
+- [x] UI: Extracciones, Connections, Ayuda (tabs + dialogs)
+- [x] Connections CRUD (title + url + db, acciones: usar/editar/logout/borrar)
+- [x] Validacion conectividad: URL accesible + DB + login OK
+- [x] Auth Odoo: JSON-RPC /jsonrpc (common.authenticate + object.execute_kw)
+- [x] Listado de modelos (selector modulo/modelo) y busqueda
+- [x] Selector de campos + orden + sample preview + nested fields (hasta 3 niveles)
+- [x] Ejecutar extraccion: search_read y escritura en sheet
+- [x] Write mode: REPLACE vs APPEND + header on/off
+- [x] Estado por datasource: last_run + runHistory (ultimas 10)
+- [ ] Manejo limites: 50MB, celdas/filas (pendiente)
+- [x] Manejo limites: 6 min (guard) + truncamiento 1000 chars
+- [x] Persistencia: DocumentProperties (connections/datasources) + UserProperties (credentials + draft)
 
 ## Fase 2 - Scheduler
-- [ ] UI scheduler (timezone/hours/days/weekdays/months)
-- [ ] Crear triggers (dispatcher o por datasource)
-- [ ] Remember my credentials (requisito para scheduler)
-- [ ] Reintentos/errores scheduler con mensajes en UI
-- [ ] Logs basicos por corrida (doc_id, user_id, datasource_id, duracion, filas, error)
+- [x] UI scheduler (timezone/hours/days/weekdays/months)
+- [x] Crear triggers (dispatcher horario: tick + nextRunAt)
+- [x] Credenciales guardadas (requisito para scheduler)
+- [x] Errores scheduler con mensajes + runHistory
+- [x] Logs basicos por corrida (en cada datasource: runHistory)
 
 ## Fase 3 - Colaboracion
 - [ ] Modelo de miembros y roles
@@ -30,11 +31,11 @@ Este backlog esta pensado para marcar OK / NO-OK con checkboxes.
 - [ ] Share credentials (cifrado + warning)
 
 ## Fase 4 - Advanced options
-- [ ] Advanced query builder (domain editor, order_by, agregaciones)
+- [x] Advanced query builder (filtros): Filter Builder (reglas AND) + Advanced JSON
 - [ ] Restriccion por permiso Odoo (Administration/Settings)
 - [ ] Guardado por datasource
 
 ## Infra / Repo
-- [ ] Definir stack de desarrollo (clasp + TS o Apps Script puro)
-- [ ] CI basico (lint/test) si se usa TS
+- [x] Definir stack de desarrollo (clasp + TS)
+- [ ] CI basico (lint/test) si se usa TS (pendiente)
 - [ ] Plantillas de issues/PRs (opcional)
