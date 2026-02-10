@@ -78,7 +78,15 @@
           </div>
         </div>
         <div class="panel">
-          <div class="panelTitle">Reglas (AND)</div>
+          <div class="row" style="justify-content:space-between;">
+            <div class="panelTitle" id="rulesTitle" style="margin:0;">Reglas</div>
+            <div style="min-width: 220px;">
+              <select id="combine">
+                <option value="AND">Todas (AND)</option>
+                <option value="OR">Cualquiera (OR)</option>
+              </select>
+            </div>
+          </div>
           <div class="hint">Hace click en un campo para agregarlo como regla. Podes editar operador y valor.</div>
           <div class="list" id="rules"></div>
 
@@ -277,6 +285,15 @@
         return out;
       }
 
+      function computeDomainArray() {
+        const terms = computeDomainFromRules();
+        const mode = String($("combine").value || "AND").toUpperCase();
+        if (mode !== "OR") return terms;
+        if (terms.length <= 1) return terms;
+        // Odoo domain OR of N terms: prepend N-1 "|" tokens in prefix notation.
+        return Array(terms.length - 1).fill("|").concat(terms);
+      }
+
       function renderFields() {
         const q = String($("q").value || "").trim().toLowerCase();
         const box = $("fields");
@@ -324,6 +341,7 @@
       function renderRules() {
         const box = $("rules");
         box.innerHTML = "";
+        try { updateTitle(); } catch (_) {}
         if (!rules.length) {
           const d = document.createElement("div");
           d.className = "muted";
@@ -430,7 +448,7 @@
         }
 
         // Update preview
-        const dom = computeDomainFromRules();
+        const dom = computeDomainArray();
         $("domainPreview").value = JSON.stringify(dom);
         if (!$("useAdvanced").checked) {
           // Keep advanced in sync, but don't override user's manual edit when advanced is on.
@@ -454,15 +472,25 @@
           activeRuleId = "";
           $("domainAdvanced").value = "";
           $("useAdvanced").checked = false;
+          $("combine").value = "AND";
+          updateTitle();
           renderRules();
           return;
         }
         try {
           const parsed = JSON.parse(raw);
           if (!Array.isArray(parsed)) throw new Error("Domain no es un array.");
-          // Only support simple AND domains in builder mode: [[field,op,val], ...]
-          const simple = parsed.every((x) => Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string");
-          if (!simple) {
+          // Builder supports:
+          // - AND: [[field,op,val], ...]
+          // - OR:  ["|","|", [field,op,val], [field,op,val], [field,op,val]]
+          const isTerm = (x) => Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string";
+          const onlyTerms = parsed.every((x) => isTerm(x));
+          const onlyOrTokensAndTerms =
+            parsed.length >= 3 &&
+            parsed.every((x) => (typeof x === "string" ? x === "|" : isTerm(x))) &&
+            parsed.filter((x) => typeof x === "string").length === parsed.filter((x) => typeof x !== "string").length - 1;
+
+          if (!onlyTerms && !onlyOrTokensAndTerms) {
             $("useAdvanced").checked = true;
             $("domainAdvanced").value = raw;
             setMsg("ok", "Dominio complejo detectado: se abre en modo avanzado.");
@@ -471,7 +499,12 @@
             renderRules();
             return;
           }
-          rules = parsed.map((t) => {
+
+          $("combine").value = onlyOrTokensAndTerms ? "OR" : "AND";
+          updateTitle();
+          const terms = onlyOrTokensAndTerms ? parsed.filter((x) => typeof x !== "string") : parsed;
+
+          rules = terms.map((t) => {
             const fieldName = String(t[0] || "");
             const op = String(t[1] || "=");
             const f = fieldByName(fieldName);
@@ -526,6 +559,7 @@
       });
       $("btnLoad").addEventListener("click", loadFields);
       $("q").addEventListener("input", renderFields);
+      $("combine").addEventListener("change", () => renderRules());
       $("btnAddRule").addEventListener("click", () => {
         const r = { id: uid(), fieldName: "", type: "", op: "=", value: "" };
         rules.push(r);
@@ -554,7 +588,7 @@
         setMsg("ok", "");
         $("btnSave").disabled = true;
         const useAdv = $("useAdvanced").checked;
-        const domainStr = useAdv ? String($("domainAdvanced").value || "").trim() : JSON.stringify(computeDomainFromRules());
+        const domainStr = useAdv ? String($("domainAdvanced").value || "").trim() : JSON.stringify(computeDomainArray());
         google.script.run
           .withSuccessHandler(() => {
             google.script.host.close();
@@ -570,6 +604,12 @@
       // Init
       $("subtitle").textContent = `${INITIAL.connectionTitle || ""} | ${INITIAL.model || ""}`;
       $("domainAdvanced").value = String(INITIAL.currentDomain || "").trim();
+      function updateTitle() {
+        const mode = String($("combine").value || "AND").toUpperCase();
+        $("rulesTitle").textContent = "Reglas (" + (mode === "OR" ? "OR" : "AND") + ")";
+      }
+      $("combine").addEventListener("change", updateTitle);
+      updateTitle();
       // Load fields automatically (so selection fields work).
       loadFields();
       // Seed rules after fields load; but keep a best-effort init now too.

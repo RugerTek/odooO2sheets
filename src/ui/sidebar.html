@@ -373,7 +373,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10a";
+      const UI_BUILD = "2026-02-10b";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -1072,11 +1072,19 @@
         try {
           const parsed = JSON.parse(raw);
           if (!Array.isArray(parsed)) return "Filtro avanzado (JSON).";
-          const simple =
-            parsed.length === 0 ||
-            parsed.every((x) => Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string");
-          if (!simple) return "Filtro avanzado (JSON).";
-          return parsed.length ? `${parsed.length} regla(s).` : "Sin filtros.";
+          const isTerm = (x) => Array.isArray(x) && x.length === 3 && typeof x[0] === "string" && typeof x[1] === "string";
+          const onlyTerms = parsed.length === 0 || parsed.every((x) => isTerm(x));
+          const onlyOrTokensAndTerms =
+            parsed.length >= 3 &&
+            parsed.every((x) => (typeof x === "string" ? x === "|" : isTerm(x))) &&
+            parsed.filter((x) => typeof x === "string").length === parsed.filter((x) => typeof x !== "string").length - 1;
+
+          if (onlyTerms) return parsed.length ? `${parsed.length} regla(s) (AND).` : "Sin filtros.";
+          if (onlyOrTokensAndTerms) {
+            const terms = parsed.filter((x) => typeof x !== "string");
+            return terms.length ? `${terms.length} regla(s) (OR).` : "Sin filtros.";
+          }
+          return "Filtro avanzado (JSON).";
         } catch {
           return "JSON invalido (corregir en Avanzado).";
         }
