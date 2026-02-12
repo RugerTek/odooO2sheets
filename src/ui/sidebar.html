@@ -382,6 +382,15 @@
           <div class="hint">Si queres OR/AND complejos, edita el JSON aca.</div>
           <textarea id="ds_domain" placeholder='[["active","=",true]]'></textarea>
         </details>
+        <details style="margin-top:8px;">
+          <summary class="title" style="cursor:pointer;">Request (JSON)</summary>
+          <div class="hint">Podes copiar/pegar un JSON (por ejemplo generado con ChatGPT) para setear tabla, columnas, filtros, limite y orden. Tambien te muestra un preview de la llamada a Odoo.</div>
+          <textarea id="ds_request" style="min-height:140px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;" placeholder='{\n  \"model\": \"res.partner\",\n  \"domain\": [[\"active\",\"=\",true]],\n  \"columns\": [\n    {\"fieldName\": \"id\", \"label\": \"ID\"},\n    {\"fieldName\": \"name\", \"label\": \"Nombre\"}\n  ],\n  \"limit\": 80,\n  \"orderBy\": \"id desc\"\n}'></textarea>
+          <div class="row" style="margin-top:8px;">
+            <button id="btnBuildRequest" type="button">Generar JSON</button>
+            <button class="primary" id="btnApplyRequest" type="button">Aplicar JSON</button>
+          </div>
+        </details>
         <div class="grid2">
           <div>
             <label>Modo de escritura</label>
@@ -410,7 +419,7 @@
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const UI_BUILD = "2026-02-10m";
+      const UI_BUILD = "2026-02-12a";
 
       let state = { context: null, connections: [], datasources: [], draft: null };
       let selectedFields = []; // [{fieldName,label,type}]
@@ -456,6 +465,259 @@
           .replaceAll(">", "&gt;")
           .replaceAll('"', "&quot;")
           .replaceAll("'", "&#039;");
+      }
+
+      function tryParseJson(raw) {
+        const s = String(raw || "").trim();
+        if (!s) return null;
+        try {
+          return JSON.parse(s);
+        } catch {
+          return null;
+        }
+      }
+
+      function baseFieldsFromColumns(cols) {
+        const out = [];
+        const seen = new Set();
+        (cols || []).forEach((c) => {
+          const spec = String((c && (c.fieldName || c)) || "").trim();
+          if (!spec) return;
+          const base = spec.split(".")[0];
+          if (!base) return;
+          if (seen.has(base)) return;
+          seen.add(base);
+          out.push(base);
+        });
+        return out;
+      }
+
+      function normalizeColumnsFromConfig(obj) {
+        const out = [];
+        const list =
+          (obj && Array.isArray(obj.columns) && obj.columns) ||
+          (obj && Array.isArray(obj.fields) && obj.fields) ||
+          null;
+
+        if (list) {
+          list.forEach((it, idx) => {
+            if (typeof it === "string") {
+              const fn = it.trim();
+              if (!fn) return;
+              out.push({ fieldName: fn, label: fn, order: idx, type: "" });
+              return;
+            }
+            if (it && typeof it === "object") {
+              const fn = String(it.fieldName || it.name || it.field || "").trim();
+              if (!fn) return;
+              const label = String(it.label || it.header || fn);
+              out.push({ fieldName: fn, label, order: idx, type: String(it.type || "") });
+            }
+          });
+          return out;
+        }
+
+        // call_kw style
+        if (obj && obj.kwargs && Array.isArray(obj.kwargs.fields)) {
+          obj.kwargs.fields.forEach((f, idx) => {
+            const fn = String(f || "").trim();
+            if (!fn) return;
+            out.push({ fieldName: fn, label: fn, order: idx, type: "" });
+          });
+        }
+        return out;
+      }
+
+      function normalizeDomainFromConfig(obj) {
+        // Prefer explicit 'domain', otherwise call_kw args[0]
+        const v =
+          (obj && typeof obj.domain !== "undefined" && obj.domain) ||
+          (obj && Array.isArray(obj.args) && obj.args.length ? obj.args[0] : undefined);
+        if (typeof v === "string") return v.trim();
+        if (Array.isArray(v)) {
+          try { return JSON.stringify(v); } catch { return ""; }
+        }
+        return "";
+      }
+
+      function normalizeModelFromConfig(obj) {
+        const m = String((obj && (obj.model || obj.odooModel || obj.table)) || "").trim();
+        return m;
+      }
+
+      function normalizeLimitFromConfig(obj) {
+        const v =
+          (obj && (obj.limit || (obj.kwargs && obj.kwargs.limit))) ||
+          undefined;
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+      }
+
+      function normalizeOrderFromConfig(obj) {
+        const v =
+          (obj && (obj.orderBy || obj.order || (obj.kwargs && obj.kwargs.order))) ||
+          "";
+        return String(v || "").trim();
+      }
+
+      function buildRequestJsonFromEditor() {
+        const connId = ($("ds_conn") && $("ds_conn").value) ? $("ds_conn").value : "";
+        const sheetName = ($("ds_sheet") && $("ds_sheet").value) ? $("ds_sheet").value : "";
+        const title = ($("ds_title") && $("ds_title").value) ? $("ds_title").value : "";
+        const model = ($("ds_model") && $("ds_model").value) ? $("ds_model").value : "";
+        const domainRaw = ($("ds_domain") && $("ds_domain").value) ? $("ds_domain").value : "";
+        const domainParsed = tryParseJson(domainRaw);
+        const domain = Array.isArray(domainParsed) ? domainParsed : (domainRaw ? domainRaw : []);
+        const limit = Number(($("ds_limit") && $("ds_limit").value) ? $("ds_limit").value : 80) || 80;
+        const orderBy = ($("ds_order") && $("ds_order").value) ? $("ds_order").value : "";
+        const writeMode = ($("ds_mode") && $("ds_mode").value) ? $("ds_mode").value : "REPLACE";
+        const header = Boolean($("ds_header") && $("ds_header").checked);
+        const companyId = ($("ds_company") && $("ds_company").value) ? Number($("ds_company").value) : undefined;
+
+        const columns = (selectedFields || []).map((f, idx) => ({
+          fieldName: f.fieldName,
+          label: f.label || f.fieldName,
+          order: idx,
+        }));
+        const baseFields = baseFieldsFromColumns(columns);
+
+        return {
+          title: String(title || "").trim() || undefined,
+          sheetName: String(sheetName || "").trim() || undefined,
+          connectionId: String(connId || "").trim() || undefined,
+          model: String(model || "").trim() || undefined,
+          domain,
+          columns,
+          limit,
+          orderBy: String(orderBy || "").trim() || undefined,
+          writeMode,
+          header,
+          companyId: Number.isFinite(companyId) ? companyId : undefined,
+          odooCallPreview: model
+            ? {
+                model: model,
+                method: "search_read",
+                args: [Array.isArray(domain) ? domain : []],
+                kwargs: { fields: baseFields, limit, order: String(orderBy || "").trim() || undefined },
+              }
+            : undefined,
+        };
+      }
+
+      function buildRequestJsonFromDetail(ds) {
+        const title = ($("d_title") && $("d_title").value) ? $("d_title").value : (ds.title || "");
+        const sheetName = ($("d_sheet") && $("d_sheet").value) ? $("d_sheet").value : ds.sheetName;
+        const connectionId = ($("d_conn") && $("d_conn").value) ? $("d_conn").value : ds.connectionId;
+        const model = ds.odooModel;
+        const domainRaw = ($("d_domain") && $("d_domain").value) ? $("d_domain").value : (ds.domain || "");
+        const domainParsed = tryParseJson(domainRaw);
+        const domain = Array.isArray(domainParsed) ? domainParsed : (domainRaw ? domainRaw : []);
+        const limit = Number(($("d_limit") && $("d_limit").value) ? $("d_limit").value : (ds.limit || 80)) || 80;
+        const orderBy = ($("d_order") && $("d_order").value) ? $("d_order").value : (ds.orderBy || "");
+        const writeMode = ($("d_mode") && $("d_mode").value) ? $("d_mode").value : (ds.writeMode || "REPLACE");
+        const header = Boolean($("d_header") && $("d_header").checked);
+        const companyId = ($("d_company") && $("d_company").value) ? Number($("d_company").value) : (ds.companyId || undefined);
+
+        const columns = (ds.fields || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((f, idx) => ({
+          fieldName: f.fieldName,
+          label: f.label || f.fieldName,
+          order: idx,
+        }));
+        const baseFields = baseFieldsFromColumns(columns);
+
+        return {
+          datasourceId: ds.id,
+          title: String(title || "").trim() || undefined,
+          sheetName: String(sheetName || "").trim() || undefined,
+          connectionId: String(connectionId || "").trim() || undefined,
+          model,
+          domain,
+          columns,
+          limit,
+          orderBy: String(orderBy || "").trim() || undefined,
+          writeMode,
+          header,
+          companyId: Number.isFinite(companyId) ? companyId : undefined,
+          odooCallPreview: {
+            model: model,
+            method: "search_read",
+            args: [Array.isArray(domain) ? domain : []],
+            kwargs: { fields: baseFields, limit, order: String(orderBy || "").trim() || undefined },
+          },
+        };
+      }
+
+      function applyConfigToDraftAndEditor(obj, onDone) {
+        const connId = String((obj && (obj.connectionId || obj.connId)) || ($("ds_conn") && $("ds_conn").value) || "").trim();
+        if (connId && $("ds_conn")) $("ds_conn").value = connId;
+        if (connId && $("login_conn")) $("login_conn").value = connId;
+        renderDsCompanyBox(connId);
+        tryLoadCompaniesForConnection(connId);
+
+        const model = normalizeModelFromConfig(obj);
+        if (!model) return setStatus("err", "JSON invalido: falta 'model'.");
+
+        const cols = normalizeColumnsFromConfig(obj);
+        if (!cols.length) return setStatus("err", "JSON invalido: falta 'columns' (o 'fields').");
+
+        const domain = normalizeDomainFromConfig(obj);
+        const limit = normalizeLimitFromConfig(obj);
+        const orderBy = normalizeOrderFromConfig(obj);
+
+        if ($("ds_model")) $("ds_model").value = model;
+        chosenModel = { model, name: obj.modelName ? String(obj.modelName) : model };
+        if (limit !== null && $("ds_limit")) $("ds_limit").value = String(limit);
+        if (orderBy && $("ds_order")) $("ds_order").value = orderBy;
+        if (typeof obj.writeMode === "string" && $("ds_mode")) $("ds_mode").value = obj.writeMode;
+        if (typeof obj.header === "boolean" && $("ds_header")) $("ds_header").checked = obj.header;
+        if (typeof obj.companyId !== "undefined" && $("ds_company")) $("ds_company").value = String(obj.companyId || "");
+        if ($("ds_domain")) $("ds_domain").value = domain || "";
+
+        // Set draft on server so dialogs and creation are consistent.
+        setStatus("info", "Aplicando JSON...");
+        runServer(
+          "api_setDraftModel",
+          [{ connectionId: connId, model, modelName: obj.modelName ? String(obj.modelName) : model }],
+          (d1) => {
+            applyDraft(d1);
+            runServer(
+              "api_setDraftFields",
+              [{ connectionId: connId, model, fields: cols }],
+              (d2) => {
+                applyDraft(d2);
+                runServer(
+                  "api_setDraftDomain",
+                  [{ connectionId: connId, model, domain: domain || "" }],
+                  (d3) => {
+                    applyDraft(d3);
+                    updateChosenModelUI();
+                    selectedFields = cols.map((f) => ({ fieldName: f.fieldName, label: f.label, type: f.type || "" }));
+                    updateChosenFieldsUI();
+                    updateFilterSummaries();
+                    setStatus("ok", "JSON aplicado.");
+                    if (onDone) onDone();
+                  },
+                  () => {
+                    updateChosenModelUI();
+                    selectedFields = cols.map((f) => ({ fieldName: f.fieldName, label: f.label, type: f.type || "" }));
+                    updateChosenFieldsUI();
+                    updateFilterSummaries();
+                    setStatus("ok", "JSON aplicado (sin domain).");
+                    if (onDone) onDone();
+                  }
+                );
+              },
+              (e) => {
+                const msg = (e && (e.message || String(e))) || "Error";
+                setStatus("err", "No pude aplicar columnas desde JSON.", msg);
+              }
+            );
+          },
+          (e) => {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setStatus("err", "No pude aplicar modelo desde JSON.", msg);
+          }
+        );
       }
 
       function renderCompanyBox(connId) {
@@ -724,6 +986,7 @@
         try { $("ds_mode").value = "REPLACE"; } catch (_) {}
         try { $("ds_header").checked = true; } catch (_) {}
         try { $("ds_domain").value = ""; } catch (_) {}
+        try { $("ds_request").value = ""; } catch (_) {}
         try { $("ds_model").value = ""; } catch (_) {}
         chosenModel = { model: "", name: "" };
         selectedFields = [];
@@ -1156,6 +1419,15 @@
                     <summary class="title" style="cursor:pointer;">Avanzado (JSON)</summary>
                     <textarea id="d_domain" style="min-height:72px;">${escapeHtml(dsCurrent.domain || "")}</textarea>
                   </details>
+                  <details style="margin-top:8px;">
+                    <summary class="title" style="cursor:pointer;">Request (JSON)</summary>
+                    <div class="hint">Edita o pega un JSON para actualizar tabla/columnas/filtros/opciones rapidamente. Luego toca "Aplicar JSON".</div>
+                    <textarea id="d_request" style="min-height:140px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;" placeholder="Click en Generar JSON para ver la llamada..."></textarea>
+                    <div class="row" style="margin-top:8px;">
+                      <button data-action="build_request_detail" data-id="${dsCurrent.id}" type="button">Generar JSON</button>
+                      <button class="primary" data-action="apply_request_detail" data-id="${dsCurrent.id}" type="button">Aplicar JSON</button>
+                    </div>
+                  </details>
                   <div class="grid2" style="margin-top:8px;">
                     <div>
                       <label>Modo de escritura</label>
@@ -1567,6 +1839,24 @@
 
       $("ds_domain").addEventListener("input", updateFilterSummaries);
 
+      $("btnBuildRequest").addEventListener("click", () => {
+        try {
+          const req = buildRequestJsonFromEditor();
+          if ($("ds_request")) $("ds_request").value = JSON.stringify(req, null, 2);
+          setStatus("ok", "JSON generado.");
+        } catch (e) {
+          const msg = (e && (e.message || String(e))) || "Error";
+          setStatus("err", "No pude generar JSON.", msg);
+        }
+      });
+
+      $("btnApplyRequest").addEventListener("click", () => {
+        const raw = $("ds_request") ? $("ds_request").value : "";
+        const obj = tryParseJson(raw);
+        if (!obj) return setStatus("err", "JSON invalido.", "Corregilo o toca Generar JSON para ver un ejemplo.");
+        applyConfigToDraftAndEditor(obj);
+      });
+
       $("btnClearDraft").addEventListener("click", () => {
         setStatus("info", "Limpiando seleccion...");
         runServer(
@@ -1577,13 +1867,14 @@
              try { $("ds_title").value = ""; } catch (_) {}
              $("ds_model").value = "";
              chosenModel = { model: "", name: "" };
-             selectedFields = [];
-             try { $("ds_domain").value = ""; } catch (_) {}
-             updateChosenModelUI();
-             updateChosenFieldsUI();
-             updateFilterSummaries();
-             setEditingUI(null);
-             setStatus("ok", "Seleccion limpiada.");
+              selectedFields = [];
+              try { $("ds_domain").value = ""; } catch (_) {}
+              try { $("ds_request").value = ""; } catch (_) {}
+              updateChosenModelUI();
+              updateChosenFieldsUI();
+              updateFilterSummaries();
+              setEditingUI(null);
+              setStatus("ok", "Seleccion limpiada.");
            },
           (e) => {
             const msg = (e && (e.message || String(e))) || "Error";
@@ -1847,6 +2138,120 @@
               btn.disabled = false;
               const msg = (e && (e.message || String(e))) || "Error";
               setStatus("err", "No se pudieron guardar los cambios.", msg);
+            }
+          );
+          return;
+        }
+
+        if (action === "build_request_detail") {
+          const id = btn.getAttribute("data-id");
+          const ds = (state.datasources || []).find((x) => x.id === id);
+          if (!id || !ds) return setStatus("err", "No encontre la extraccion.", `Datasource: ${id}`);
+          try {
+            const req = buildRequestJsonFromDetail(ds);
+            if ($("d_request")) $("d_request").value = JSON.stringify(req, null, 2);
+            setStatus("ok", "JSON generado.");
+          } catch (e) {
+            const msg = (e && (e.message || String(e))) || "Error";
+            setStatus("err", "No pude generar JSON.", msg);
+          }
+          return;
+        }
+
+        if (action === "apply_request_detail") {
+          const id = btn.getAttribute("data-id");
+          const ds = (state.datasources || []).find((x) => x.id === id);
+          if (!id || !ds) return setStatus("err", "No encontre la extraccion.", `Datasource: ${id}`);
+
+          const raw = $("d_request") ? $("d_request").value : "";
+          const obj = tryParseJson(raw);
+          if (!obj) return setStatus("err", "JSON invalido.", "Toca Generar JSON para ver un ejemplo.");
+
+          const model = normalizeModelFromConfig(obj) || ds.odooModel;
+          const cols = normalizeColumnsFromConfig(obj);
+          const domainFromJson = normalizeDomainFromConfig(obj);
+          const limitFromJson = normalizeLimitFromConfig(obj);
+          const orderFromJson = normalizeOrderFromConfig(obj);
+
+          const finalTitle =
+            (typeof obj.title === "string" ? obj.title : (($("d_title") && $("d_title").value) ? $("d_title").value : ds.title || "")) || "";
+          const finalSheet =
+            (typeof obj.sheetName === "string" ? obj.sheetName : (($("d_sheet") && $("d_sheet").value) ? $("d_sheet").value : ds.sheetName)) || ds.sheetName;
+          const finalConn =
+            (typeof obj.connectionId === "string" ? obj.connectionId : (($("d_conn") && $("d_conn").value) ? $("d_conn").value : ds.connectionId)) || ds.connectionId;
+
+          const finalDomain =
+            domainFromJson !== ""
+              ? domainFromJson
+              : (($("d_domain") && $("d_domain").value) ? $("d_domain").value : (ds.domain || ""));
+          const finalLimit =
+            limitFromJson !== null
+              ? limitFromJson
+              : Number(($("d_limit") && $("d_limit").value) || ds.limit || 80);
+          const finalOrder =
+            orderFromJson
+              ? orderFromJson
+              : (($("d_order") && $("d_order").value) ? $("d_order").value : (ds.orderBy || ""));
+          const finalWriteMode =
+            (typeof obj.writeMode === "string" ? obj.writeMode : (($("d_mode") && $("d_mode").value) ? $("d_mode").value : (ds.writeMode || "REPLACE"))) || "REPLACE";
+          const finalHeader =
+            (typeof obj.header === "boolean" ? obj.header : Boolean($("d_header") && $("d_header").checked));
+          const finalCompanyId =
+            (typeof obj.companyId !== "undefined")
+              ? Number(obj.companyId) || undefined
+              : (($("d_company") && $("d_company").value) ? Number($("d_company").value) : undefined);
+
+          const fieldArr = (cols && cols.length)
+            ? cols.map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }))
+            : (ds.fields || []).slice().sort((a,b)=> (a.order||0)-(b.order||0)).map((f, idx) => ({ fieldName: f.fieldName, label: f.label || f.fieldName, order: idx }));
+          if (!fieldArr.length) return setStatus("err", "Faltan columnas en el JSON.", "Inclui 'columns' con al menos 1 item.");
+
+          // Update visible inputs so the user sees what will be saved.
+          try { if ($("d_title")) $("d_title").value = finalTitle; } catch (_) {}
+          try { if ($("d_domain")) $("d_domain").value = finalDomain || ""; } catch (_) {}
+          try { if ($("d_limit")) $("d_limit").value = String(finalLimit || 80); } catch (_) {}
+          try { if ($("d_order")) $("d_order").value = finalOrder || ""; } catch (_) {}
+          try { if ($("d_mode")) $("d_mode").value = finalWriteMode; } catch (_) {}
+          try { if ($("d_header")) $("d_header").checked = Boolean(finalHeader); } catch (_) {}
+          try { if ($("d_sheet")) $("d_sheet").value = finalSheet; } catch (_) {}
+          try { if ($("d_conn")) $("d_conn").value = finalConn; } catch (_) {}
+          try { if ($("d_company")) $("d_company").value = finalCompanyId ? String(finalCompanyId) : ""; } catch (_) {}
+
+          setStatus("info", "Aplicando JSON y guardando...");
+          btn.disabled = true;
+          runServer(
+            "api_updateDatasource",
+            [{
+              datasourceId: id,
+              title: finalTitle,
+              sheetName: finalSheet,
+              connectionId: finalConn,
+              odooModel: model,
+              fields: fieldArr,
+              limit: finalLimit,
+              domain: finalDomain,
+              orderBy: finalOrder,
+              writeMode: finalWriteMode,
+              header: Boolean(finalHeader),
+              companyId: finalCompanyId,
+            }],
+            () => {
+              btn.disabled = false;
+              // Keep draft aligned so dialogs open with the same config.
+              runServer("api_setDraftModel", [{ connectionId: finalConn, model, modelName: model }], (d1) => {
+                applyDraft(d1);
+                runServer("api_setDraftFields", [{ connectionId: finalConn, model, fields: fieldArr.map((f) => ({ ...f })) }], (d2) => {
+                  applyDraft(d2);
+                  runServer("api_setDraftDomain", [{ connectionId: finalConn, model, domain: finalDomain || "" }], (d3) => applyDraft(d3), () => {});
+                }, () => {});
+              }, () => {});
+              setStatus("ok", "JSON aplicado y guardado.");
+              requestBootstrap(120);
+            },
+            (e) => {
+              btn.disabled = false;
+              const msg = (e && (e.message || String(e))) || "Error";
+              setStatus("err", "No pude guardar desde JSON.", msg);
             }
           );
           return;
